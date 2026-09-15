@@ -1,0 +1,38 @@
+[gd_resource type="SettingsData" load_steps=12 format=3]
+
+[sub_resource type="AccessibilitySettings" id="AccessibilitySettings_j4dh1"]
+
+[sub_resource type="AudioSettings" id="AudioSettings_8cgyp"]
+
+[sub_resource type="ControllerSettingsPreset" id="ControllerSettingsPreset_60ttg"]
+
+[sub_resource type="ControllerSettingsPreset" id="ControllerSettingsPreset_k6kvs"]
+
+[sub_resource type="ControllerSettings" id="ControllerSettings_j1vqk"]
+presets = Array[ControllerSettingsPreset]([SubResource("ControllerSettingsPreset_k6kvs")])
+preset_select = 0
+current_preset = SubResource("ControllerSettingsPreset_60ttg")
+
+[sub_resource type="GameSettings" id="GameSettings_p5l4c"]
+
+[sub_resource type="GraphicsSettings" id="GraphicsSettings_onob4"]
+
+[sub_resource type="MouseKeyboardSettingsPreset" id="MouseKeyboardSettingsPreset_7jtqr"]
+
+[sub_resource type="MouseKeyboardSettingsPreset" id="MouseKeyboardSettingsPreset_qrmo5"]
+
+[sub_resource type="MouseKeyboardSettings" id="MouseKeyboardSettings_flbcj"]
+presets = Array[MouseKeyboardSettingsPreset]([SubResource("MouseKeyboardSettingsPreset_qrmo5")])
+preset_select = 0
+current_preset = SubResource("MouseKeyboardSettingsPreset_7jtqr")
+
+[sub_resource type="VideoSettings" id="VideoSettings_k30ou"]
+
+[resource]
+game_settings = SubResource("GameSettings_p5l4c")
+audio_settings = SubResource("AudioSettings_8cgyp")
+video_settings = SubResource("VideoSettings_k30ou")
+graphics_settings = SubResource("GraphicsSettings_onob4")
+accessibility_settings = SubResource("AccessibilitySettings_j4dh1")
+mouse_keyboard_settings = SubResource("MouseKeyboardSettings_flbcj")
+controller_settings = SubResource("ControllerSettings_j1vqk")

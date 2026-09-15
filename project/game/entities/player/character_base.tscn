@@ -1,0 +1,94 @@
+[gd_scene load_steps=10 format=3 uid="uid://b3hjmk2hptjxj"]
+
+[ext_resource type="PackedScene" uid="uid://ddkkff00dfhsg" path="res://assets/characters/anims_blueprint.tscn" id="2_o76q7"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_ysdc6"]
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_o76q7"]
+animation = &"Crit"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_5cwj4"]
+animation = &"Idle1_Base"
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_b01ov"]
+switch_mode = 2
+advance_mode = 2
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_daabp"]
+advance_mode = 2
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_6dou3"]
+xfade_time = 0.25
+advance_mode = 2
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_nn3vt"]
+xfade_time = 0.25
+advance_mode = 2
+
+[sub_resource type="AnimationNodeStateMachine" id="AnimationNodeStateMachine_nn3vt"]
+states/Crit/node = SubResource("AnimationNodeAnimation_o76q7")
+states/Crit/position = Vector2(483, 100)
+states/End/position = Vector2(617, 100)
+states/Idle1_Base/node = SubResource("AnimationNodeAnimation_5cwj4")
+states/Idle1_Base/position = Vector2(346, 100)
+states/Start/position = Vector2(211, 100)
+transitions = ["Crit", "End", SubResource("AnimationNodeStateMachineTransition_b01ov"), "Start", "Idle1_Base", SubResource("AnimationNodeStateMachineTransition_daabp"), "Idle1_Base", "Crit", SubResource("AnimationNodeStateMachineTransition_6dou3"), "Crit", "Idle1_Base", SubResource("AnimationNodeStateMachineTransition_nn3vt")]
+
+[node name="CharacterBase" type="Node3D"]
+
+[node name="Hurtbox" type="Area3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Hurtbox"]
+shape = SubResource("CapsuleShape3D_ysdc6")
+
+[node name="Model" type="Node3D" parent="."]
+
+[node name="Sockets" type="Node3D" parent="."]
+
+[node name="Head" type="Node3D" parent="Sockets"]
+
+[node name="Neck" type="Node3D" parent="Sockets"]
+
+[node name="Chest" type="Node3D" parent="Sockets"]
+
+[node name="Back" type="Node3D" parent="Sockets"]
+
+[node name="LeftShoulder" type="Node3D" parent="Sockets"]
+
+[node name="LeftElbow" type="Node3D" parent="Sockets"]
+
+[node name="LeftHand" type="Node3D" parent="Sockets"]
+
+[node name="RightShoulder" type="Node3D" parent="Sockets"]
+
+[node name="RightElbow" type="Node3D" parent="Sockets"]
+
+[node name="RightHand" type="Node3D" parent="Sockets"]
+
+[node name="Waist" type="Node3D" parent="Sockets"]
+
+[node name="Hip" type="Node3D" parent="Sockets"]
+
+[node name="LeftThigh" type="Node3D" parent="Sockets"]
+
+[node name="LeftKnee" type="Node3D" parent="Sockets"]
+
+[node name="LeftFoot" type="Node3D" parent="Sockets"]
+
+[node name="RightThigh" type="Node3D" parent="Sockets"]
+
+[node name="RightKnee" type="Node3D" parent="Sockets"]
+
+[node name="RightFoot" type="Node3D" parent="Sockets"]
+
+[node name="Audio" type="Node3D" parent="."]
+
+[node name="Footsteps" type="AudioStreamPlayer3D" parent="Audio"]
+
+[node name="Voice" type="AudioStreamPlayer3D" parent="Audio"]
+
+[node name="AnimationTree" type="AnimationTree" parent="."]
+tree_root = SubResource("AnimationNodeStateMachine_nn3vt")
+anim_player = NodePath("../AnimationPlayerBlueprint")
+
+[node name="AnimationPlayerBlueprint" parent="." instance=ExtResource("2_o76q7")]

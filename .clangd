@@ -1,0 +1,6 @@
+CompileFlags:
+  Remove: 
+    [-fno-gnu-unique]
+
+Diagnostics:
+  UnusedIncludes: None

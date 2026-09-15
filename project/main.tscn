@@ -1,0 +1,168 @@
+[gd_scene format=3 uid="uid://b3ftskvhntu4a"]
+
+[ext_resource type="Script" uid="uid://c1borsvwfvy1m" path="res://main.gd" id="1_1bvp3"]
+[ext_resource type="Texture2D" uid="uid://bgh6d170ih2ti" path="res://floor.jpg" id="1_h2yge"]
+[ext_resource type="PackedScene" uid="uid://ddvam0a3irj5l" path="res://game/entities/player/player.tscn" id="1_ig7tw"]
+[ext_resource type="Script" uid="uid://0oy3f2y0ay0p" path="res://game/entities/player/player.gd" id="2_0xm2m"]
+[ext_resource type="Script" uid="uid://f4cneejgqtgd" path="res://core/settings/settings_menu.gd" id="5_lquwl"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_0xm2m"]
+size = Vector3(31, 1, 11)
+
+[sub_resource type="BoxMesh" id="BoxMesh_h2yge"]
+size = Vector3(31, 1, 31)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lquwl"]
+albedo_texture = ExtResource("1_h2yge")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1bvp3"]
+albedo_color = Color(0.767447, 1, 0.667761, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lquwl"]
+material = SubResource("StandardMaterial3D_1bvp3")
+
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_lquwl"]
+type = 1
+
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_7mycd"]
+type = 4
+hint = 1
+hint_string = "1,100,1"
+
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_272bh"]
+property_select = &"d_value1"
+type = 1
+property_info_dict = {
+"d_value1": SubResource("DynamicPropertyInfo_lquwl"),
+"d_value2": SubResource("DynamicPropertyInfo_7mycd")
+}
+
+[node name="Node3D" type="Node3D" unique_id=662699248]
+script = ExtResource("1_1bvp3")
+
+[node name="World" type="Node3D" parent="." unique_id=1506964186]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="World" unique_id=1134328071]
+transform = Transform3D(0.707107, -0.5, 0.5, 0, 0.707107, 0.707107, -0.707107, -0.5, 0.5, 15.5, 5, 15.5)
+
+[node name="Ground" type="StaticBody3D" parent="World" unique_id=835302047]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="World/Ground" unique_id=1554105469]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+shape = SubResource("BoxShape3D_0xm2m")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="World/Ground" unique_id=99836486]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+mesh = SubResource("BoxMesh_h2yge")
+surface_material_override/0 = SubResource("StandardMaterial3D_lquwl")
+
+[node name="PlayerPivot" type="Node3D" parent="World" unique_id=1815651559]
+
+[node name="Player" parent="World/PlayerPivot" unique_id=1714584623 instance=ExtResource("1_ig7tw")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+script = ExtResource("2_0xm2m")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="World/PlayerPivot/Player" unique_id=804949718]
+mesh = SubResource("BoxMesh_lquwl")
+
+[node name="CameraPivot" type="Node3D" parent="World" unique_id=526236225]
+transform = Transform3D(1, 0, 0, 0, 0.422618, 0.906308, 0, -0.906308, 0.422618, 0, 9.5, 4)
+metadata/_edit_group_ = true
+
+[node name="Camera3D" type="Camera3D" parent="World/CameraPivot" unique_id=647325348]
+current = true
+size = 10.0
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1810067670]
+
+[node name="SettingsMenu" type="Control" parent="CanvasLayer" unique_id=1665916992]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("5_lquwl")
+d_value1 = 4
+d_value2 = "0.0f"
+d_property_info = SubResource("DynamicPropertyInfo_272bh")
+
+[node name="PanelContainer" type="PanelContainer" parent="CanvasLayer/SettingsMenu" unique_id=281114992]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="MarginContainer" type="MarginContainer" parent="CanvasLayer/SettingsMenu/PanelContainer" unique_id=595491859]
+layout_mode = 2
+
+[node name="accessibility_settings" type="VBoxContainer" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer" unique_id=317579200]
+layout_mode = 2
+
+[node name="text_size" type="OptionButton" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/accessibility_settings" unique_id=1573393548]
+layout_mode = 2
+
+[node name="color_blindness" type="OptionButton" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/accessibility_settings" unique_id=581210676]
+layout_mode = 2
+
+[node name="ApplyButton" type="Button" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/accessibility_settings" unique_id=585527509]
+layout_mode = 2
+text = "Aplicar"
+
+[node name="RestoreButton" type="Button" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/accessibility_settings" unique_id=1882198992]
+layout_mode = 2
+text = "Restaurar"
+
+[node name="mouse_keyboard_settings" type="VBoxContainer" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer" unique_id=1077740349]
+visible = false
+layout_mode = 2
+
+[node name="preset_select" type="OptionButton" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/mouse_keyboard_settings" unique_id=1890468119]
+layout_mode = 2
+selected = 0
+item_count = 2
+popup/item_0/text = "a"
+popup/item_0/id = 0
+popup/item_1/text = "b"
+popup/item_1/id = 1
+
+[node name="current_preset" type="VBoxContainer" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/mouse_keyboard_settings" unique_id=1312996898]
+layout_mode = 2
+
+[node name="name" type="LineEdit" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/mouse_keyboard_settings/current_preset" unique_id=375258497]
+layout_mode = 2
+placeholder_text = "Default"
+
+[node name="sensitivity" type="HSlider" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/mouse_keyboard_settings/current_preset" unique_id=898531357]
+layout_mode = 2
+
+[node name="x_axis_inverted" type="CheckBox" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/mouse_keyboard_settings/current_preset" unique_id=1915219839]
+layout_mode = 2
+
+[node name="y_axis_inverted" type="CheckBox" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/mouse_keyboard_settings/current_preset" unique_id=1651628744]
+layout_mode = 2
+
+[node name="ApplyButton" type="Button" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/mouse_keyboard_settings" unique_id=1620596079]
+layout_mode = 2
+text = "Aplicar"
+
+[node name="RestoreButton" type="Button" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/mouse_keyboard_settings" unique_id=1474795524]
+layout_mode = 2
+text = "Restaurar"
+
+[node name="game_settings" type="VBoxContainer" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer" unique_id=1847612165]
+visible = false
+layout_mode = 2
+
+[node name="language" type="OptionButton" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/game_settings" unique_id=1427565367]
+layout_mode = 2
+
+[node name="gore" type="CheckBox" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/game_settings" unique_id=1436710980]
+layout_mode = 2
+
+[node name="ApplyButton" type="Button" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/game_settings" unique_id=1654067987]
+layout_mode = 2
+text = "Aplicar"
+
+[node name="RestoreButton" type="Button" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/game_settings" unique_id=1291527035]
+layout_mode = 2
+text = "Restaurar"

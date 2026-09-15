@@ -1,0 +1,40 @@
+player.tscn
+CharacterBody3D: Player
+├── CollisionShape3D: Self named
+└── CharacterBase: Self named (character_base.tscn)
+
+character_base.tscn
+Node3D: CharacterBase
+├── Area3D: Hurtbox
+│   └── CollisionShape3D: Self named
+├── Node3D: Model
+├── Node3D: Sockets
+│   ├── Node3D: Head
+│   ├── Node3D: Neck
+│   ├── Node3D: Chest
+│   ├── Node3D: Back
+│   ├── Node3D: LeftShoulder
+│   ├── Node3D: LeftElbow
+│   ├── Node3D: LeftHand
+│   ├── Node3D: RightShoulder
+│   ├── Node3D: RightElbow
+│   ├── Node3D: RightHand
+│   ├── Node3D: Waist
+│   ├── Node3D: Hip
+│   ├── Node3D: Crotch
+│   ├── Node3D: LeftThigh
+│   ├── Node3D: RightThigh
+│   ├── Node3D: LeftFoot
+│   └── Node3D: RightFoot
+├── Node3D: Audio
+│   ├── Node3D: Footsteps
+│   └── Node3D: Voice
+├── AnimationTree: Self named
+└── AnimationPlayer: AnimationPlayerBlueprint
+
+«any»_character.tscn
+Node3D: «Any»Character
+├── Node3D: Skeleton
+│   └── Skeleton3D: Self named
+│       └── MeshInstance3D: Meshes
+└── AnimationPlayer: Self named

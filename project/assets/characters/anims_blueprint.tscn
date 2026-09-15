@@ -1,0 +1,199 @@
+[gd_scene load_steps=65 format=3 uid="uid://ddkkff00dfhsg"]
+
+[sub_resource type="Animation" id="Animation_rq87o"]
+
+[sub_resource type="Animation" id="Animation_e8rfa"]
+
+[sub_resource type="Animation" id="Animation_lu1k3"]
+
+[sub_resource type="Animation" id="Animation_2hvyi"]
+
+[sub_resource type="Animation" id="Animation_b6kj7"]
+
+[sub_resource type="Animation" id="Animation_1bgts"]
+
+[sub_resource type="Animation" id="Animation_1ex6c"]
+
+[sub_resource type="Animation" id="Animation_nrsln"]
+
+[sub_resource type="Animation" id="Animation_q341t"]
+
+[sub_resource type="Animation" id="Animation_44g84"]
+
+[sub_resource type="Animation" id="Animation_4oy3s"]
+
+[sub_resource type="Animation" id="Animation_1pj2l"]
+
+[sub_resource type="Animation" id="Animation_ida88"]
+
+[sub_resource type="Animation" id="Animation_h4i48"]
+
+[sub_resource type="Animation" id="Animation_kvcod"]
+
+[sub_resource type="Animation" id="Animation_vyrmf"]
+
+[sub_resource type="Animation" id="Animation_3tnmx"]
+
+[sub_resource type="Animation" id="Animation_q6u6b"]
+
+[sub_resource type="Animation" id="Animation_07ax0"]
+
+[sub_resource type="Animation" id="Animation_fwwsp"]
+
+[sub_resource type="Animation" id="Animation_vkyk3"]
+
+[sub_resource type="Animation" id="Animation_xq65d"]
+
+[sub_resource type="Animation" id="Animation_0cmux"]
+
+[sub_resource type="Animation" id="Animation_ryvbw"]
+
+[sub_resource type="Animation" id="Animation_6q4sq"]
+
+[sub_resource type="Animation" id="Animation_h5pw6"]
+
+[sub_resource type="Animation" id="Animation_vb6wl"]
+
+[sub_resource type="Animation" id="Animation_o0q2s"]
+
+[sub_resource type="Animation" id="Animation_dfygv"]
+
+[sub_resource type="Animation" id="Animation_2423a"]
+
+[sub_resource type="Animation" id="Animation_xcata"]
+
+[sub_resource type="Animation" id="Animation_7pvq1"]
+
+[sub_resource type="Animation" id="Animation_u7pfi"]
+
+[sub_resource type="Animation" id="Animation_wvwew"]
+
+[sub_resource type="Animation" id="Animation_adbnq"]
+
+[sub_resource type="Animation" id="Animation_0qab4"]
+
+[sub_resource type="Animation" id="Animation_eg0wd"]
+
+[sub_resource type="Animation" id="Animation_nt1j7"]
+
+[sub_resource type="Animation" id="Animation_v5hvi"]
+
+[sub_resource type="Animation" id="Animation_hmrdq"]
+
+[sub_resource type="Animation" id="Animation_fqoa3"]
+
+[sub_resource type="Animation" id="Animation_e1ijw"]
+
+[sub_resource type="Animation" id="Animation_sjvri"]
+
+[sub_resource type="Animation" id="Animation_vrmi1"]
+
+[sub_resource type="Animation" id="Animation_ixr2g"]
+
+[sub_resource type="Animation" id="Animation_sbbgu"]
+
+[sub_resource type="Animation" id="Animation_b1lop"]
+
+[sub_resource type="Animation" id="Animation_p608o"]
+
+[sub_resource type="Animation" id="Animation_7n82s"]
+
+[sub_resource type="Animation" id="Animation_duala"]
+
+[sub_resource type="Animation" id="Animation_vyg5c"]
+
+[sub_resource type="Animation" id="Animation_8h88h"]
+
+[sub_resource type="Animation" id="Animation_v3aa8"]
+
+[sub_resource type="Animation" id="Animation_26ymr"]
+
+[sub_resource type="Animation" id="Animation_afuuw"]
+
+[sub_resource type="Animation" id="Animation_fca7k"]
+
+[sub_resource type="Animation" id="Animation_6xl81"]
+
+[sub_resource type="Animation" id="Animation_ag255"]
+
+[sub_resource type="Animation" id="Animation_vq83y"]
+
+[sub_resource type="Animation" id="Animation_fah75"]
+
+[sub_resource type="Animation" id="Animation_8dwq2"]
+
+[sub_resource type="Animation" id="Animation_nm6tf"]
+
+[sub_resource type="Animation" id="Animation_pdd3j"]
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_ccu6y"]
+_data = {
+&"Attack1": SubResource("Animation_rq87o"),
+&"Attack2": SubResource("Animation_e8rfa"),
+&"Channel": SubResource("Animation_lu1k3"),
+&"Channel_Wndup": SubResource("Animation_2hvyi"),
+&"Crit": SubResource("Animation_b6kj7"),
+&"Dance": SubResource("Animation_1bgts"),
+&"Dance_Start": SubResource("Animation_1ex6c"),
+&"Death": SubResource("Animation_nrsln"),
+&"Idle1_Base": SubResource("Animation_q341t"),
+&"Idle1_Var1": SubResource("Animation_44g84"),
+&"Idle_Passive": SubResource("Animation_4oy3s"),
+&"Joke": SubResource("Animation_1pj2l"),
+&"Laugh": SubResource("Animation_ida88"),
+&"PassRun_To_PassIdle": SubResource("Animation_h4i48"),
+&"Recall": SubResource("Animation_kvcod"),
+&"Recall_Winddown": SubResource("Animation_vyrmf"),
+&"Respawn": SubResource("Animation_3tnmx"),
+&"Run_Base": SubResource("Animation_q6u6b"),
+&"Run_Haste": SubResource("Animation_07ax0"),
+&"Run_Injured": SubResource("Animation_fwwsp"),
+&"Run_Passive_Alt1": SubResource("Animation_vkyk3"),
+&"Run_Passive_Break1": SubResource("Animation_xq65d"),
+&"Run_Passive_BuildUp": SubResource("Animation_0cmux"),
+&"Run_Passive_Transition": SubResource("Animation_ryvbw"),
+&"Spell1_-180": SubResource("Animation_6q4sq"),
+&"Spell1_-90": SubResource("Animation_h5pw6"),
+&"Spell1_0": SubResource("Animation_vb6wl"),
+&"Spell1_180": SubResource("Animation_o0q2s"),
+&"Spell1_90": SubResource("Animation_dfygv"),
+&"Spell1_B_-180_anm": SubResource("Animation_2423a"),
+&"Spell1_B_-90_anm": SubResource("Animation_xcata"),
+&"Spell1_B_180_anm": SubResource("Animation_7pvq1"),
+&"Spell1_B_90_anm": SubResource("Animation_u7pfi"),
+&"Spell1_B_anm": SubResource("Animation_wvwew"),
+&"Spell1_B_toIdle_anm": SubResource("Animation_adbnq"),
+&"Spell1_B_toRun_anm": SubResource("Animation_0qab4"),
+&"Spell2_-180": SubResource("Animation_eg0wd"),
+&"Spell2_-90": SubResource("Animation_nt1j7"),
+&"Spell2_0": SubResource("Animation_v5hvi"),
+&"Spell2_180": SubResource("Animation_hmrdq"),
+&"Spell2_90": SubResource("Animation_fqoa3"),
+&"Spell2_Cast": SubResource("Animation_e1ijw"),
+&"Spell2_Moving_-180": SubResource("Animation_sjvri"),
+&"Spell2_Moving_-90": SubResource("Animation_vrmi1"),
+&"Spell2_Moving_0": SubResource("Animation_ixr2g"),
+&"Spell2_Moving_180": SubResource("Animation_sbbgu"),
+&"Spell2_Moving_90": SubResource("Animation_b1lop"),
+&"Spell3_Base": SubResource("Animation_p608o"),
+&"Spell3_Upper": SubResource("Animation_7n82s"),
+&"Spell4": SubResource("Animation_duala"),
+&"Spell4_GroundRun": SubResource("Animation_vyg5c"),
+&"Spell4_GroundRun_R": SubResource("Animation_8h88h"),
+&"Spell4_JumpOff": SubResource("Animation_v3aa8"),
+&"Spell4_KnockOff": SubResource("Animation_26ymr"),
+&"Spell4_Run": SubResource("Animation_afuuw"),
+&"Spell4_To_Idle": SubResource("Animation_fca7k"),
+&"Spell4_To_Run": SubResource("Animation_6xl81"),
+&"Taliyah_Idle1_In_anm": SubResource("Animation_ag255"),
+&"Taliyah_Run_Passive_anm": SubResource("Animation_vq83y"),
+&"Taunt": SubResource("Animation_fah75"),
+&"Transition_To_Idle": SubResource("Animation_8dwq2"),
+&"Turn-90": SubResource("Animation_nm6tf"),
+&"Turn90": SubResource("Animation_pdd3j")
+}
+
+[node name="AnimationPlayer" type="AnimationPlayer"]
+libraries = {
+&"": SubResource("AnimationLibrary_ccu6y")
+}

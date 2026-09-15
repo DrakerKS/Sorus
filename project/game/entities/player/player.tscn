@@ -1,0 +1,35 @@
+[gd_scene load_steps=4 format=3 uid="uid://ddvam0a3irj5l"]
+
+[ext_resource type="PackedScene" uid="uid://b3hjmk2hptjxj" path="res://game/entities/player/character_base.tscn" id="1_mv1ah"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_onrkg"]
+
+[sub_resource type="GDScript" id="GDScript_mv1ah"]
+script/source = "extends Node3D
+
+@onready var model = $Model
+
+func set_model(scene: PackedScene) -> void:
+	scale = Vector3(0.01, 0.01, 0.01)
+
+	for child in model.get_children():
+		child.queue_free()
+
+	var character = scene.instantiate()
+	model.add_child(character)
+
+	var source_anim_player: AnimationPlayer = character.get_node(\"AnimationPlayer\")
+	for anim_name in source_anim_player.get_animation_list():
+		var animation = source_anim_player.get_animation(anim_name)
+		animation.loop_mode = Animation.LOOP_LINEAR
+
+	$AnimationTree.anim_player = source_anim_player.get_path()
+"
+
+[node name="Player" type="CharacterBody3D"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CylinderShape3D_onrkg")
+
+[node name="CharacterBase" parent="." instance=ExtResource("1_mv1ah")]
+script = SubResource("GDScript_mv1ah")
