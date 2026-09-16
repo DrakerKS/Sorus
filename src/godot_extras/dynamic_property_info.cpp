@@ -377,10 +377,10 @@ static void print_tree(Node *p_node, int p_indent = 0) {
     } else {
       debug_print_rich(
         vformat(
-          COLOR_RED("F: %s%s <%d>"),
+          COLOR_RED("F: %s%s <0x%s>"),
           indent,
           p_node->get_class(),
-          uintptr_t(p_node)
+          String::num_uint64(uint64_t(p_node), 16)
         )
       );
     }
