@@ -32,7 +32,6 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 		GDREGISTER_CLASS(Debug);
 		GDREGISTER_CLASS(DemoContainer);
 		GDREGISTER_CLASS(DynamicPropertyInfo);
-		GDREGISTER_INTERNAL_CLASS(__CLASS__SECTION__END__);
 
 		GDREGISTER_INTERNAL_CLASS(Reactive);
 		GDREGISTER_CLASS(ReactiveVariant);
@@ -44,7 +43,6 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 	else if (p_level == godot::MODULE_INITIALIZATION_LEVEL_EDITOR) {
 		GDREGISTER_CLASS(DynamicPropertyInfoInspectorPlugin);
 		GDREGISTER_CLASS(DynamicPropertyInfoEditorPlugin);
-		GDREGISTER_CLASS(DynamicEditorProperty);
 
 		EditorPlugins::add_by_type<DynamicPropertyInfoEditorPlugin>();
 	}

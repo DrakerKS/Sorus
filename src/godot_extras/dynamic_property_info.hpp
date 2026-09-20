@@ -25,17 +25,6 @@ namespace godot {
 // |================================= DYNAMIC_PROPERTY_INFO =================================|
 // +-----------------------------------------------------------------------------------------+-
 
-  class __CLASS__SECTION__END__ : public RefCounted {
-    GDCLASS(__CLASS__SECTION__END__, RefCounted);
-
-    protected:
-      static void _bind_methods() { }
-
-    public:
-      __CLASS__SECTION__END__() = default;
-      ~__CLASS__SECTION__END__() = default;
-  };
-
   class DynamicPropertyInfo : public Resource {
     GDCLASS(DynamicPropertyInfo, Resource);
 
@@ -49,7 +38,6 @@ namespace godot {
       SORUS_DECL(String, hint_string)
       SORUS_DECL(uint32_t, usage, PROPERTY_USAGE_DEFAULT);
       SORUS_DECL(Dictionary, property_info_dict); /*<[StringName, Ref<DynamicPropertyInfo>]>*/
-      Ref<__CLASS__SECTION__END__> SECTION_END;
 
       bool is_root = false;
       static constexpr const char * PLACEHOLDER_PROPERTY_SELECT = "Select";
@@ -65,10 +53,6 @@ namespace godot {
       /** @deprecated property_info is no longer a property, use get_property_info instead */
       static constexpr const char *MEMBER_PROPERTY_INFO = "property_info";
 
-      void set_SECTION_END(const Ref<__CLASS__SECTION__END__> &p_section_end) { }
-
-      Ref<__CLASS__SECTION__END__> get_SECTION_END() const { return {}; }
-
       PropertyInfo get_property_info(){
         PropertyInfo property_info {
           type,
@@ -83,7 +67,6 @@ namespace godot {
 
       DynamicPropertyInfo() {
         property_select = PLACEHOLDER_PROPERTY_SELECT;
-        SECTION_END.instantiate();
       }
 
       DynamicPropertyInfo(
@@ -94,43 +77,9 @@ namespace godot {
           hint_string {p_property_info.hint_string}, 
           usage {p_property_info.usage} {
             /** nop */
-            SECTION_END.instantiate();
           }
 
       ~DynamicPropertyInfo() = default;
-  };
-
-// +-----------------------------------------------------------------------------------------+
-// |================================ DYNAMIC_EDITOR_PROPERTY ================================|
-// +-----------------------------------------------------------------------------------------+
-
-  class DynamicEditorProperty : public EditorProperty {
-    GDCLASS(DynamicEditorProperty, EditorProperty);
-
-    private:
-      EditorProperty *native_editor = nullptr;
-
-    protected:
-      static void _bind_methods() {}
-
-    public:
-      void _update_property() override;
-
-      void setup(
-        Object *p_object,
-        PropertyInfo p_property_info,
-        bool p_wide
-      );
-
-      void _on_native_property_changed(
-        const StringName &p_property, 
-        const Variant &p_value, 
-        const StringName &p_field, 
-        bool p_changing
-      );
-
-      DynamicEditorProperty() = default;
-      ~DynamicEditorProperty() = default;
   };
 
 // +----------------------------------------------------------------------------------------+
@@ -139,8 +88,6 @@ namespace godot {
 
   class DynamicPropertyInfoInspectorPlugin : public EditorInspectorPlugin {
     GDCLASS(DynamicPropertyInfoInspectorPlugin, EditorInspectorPlugin);
-
-    friend void print_tree(Node *p_node, int p_indent);
 
     protected:
       static void _bind_methods() { }
@@ -156,8 +103,6 @@ namespace godot {
         return value;
       }
 
-      // static void print_tree(Node *p_node, int p_indent = 0);
-
       static void on_dynamic_property_info_changed(Object *p_object, const Ref<DynamicPropertyInfo> &root_dpi);
       static bool find_root_dpi(
         const Object *p_object, 
@@ -166,7 +111,6 @@ namespace godot {
       );
 
     public:
-      
       bool _can_handle(Object *p_object) const override;
       void _parse_begin(Object *p_object) override;
       bool _parse_property(
@@ -179,6 +123,8 @@ namespace godot {
         bool p_wide
       ) override;
       void _parse_end(Object *p_object) override;
+
+      void _on_submit();
 
       DynamicPropertyInfoInspectorPlugin() = default;
       ~DynamicPropertyInfoInspectorPlugin() = default;

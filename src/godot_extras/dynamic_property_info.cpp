@@ -2,6 +2,8 @@
 
 #include "godot_cpp/classes/object.hpp"
 #include "godot_cpp/classes/node.hpp"
+#include "godot_cpp/classes/button.hpp"
+#include "godot_cpp/classes/editor_interface.hpp"
 #include "godot_cpp/classes/editor_inspector.hpp"
 
 #include "godot_cpp/variant/callable_method_pointer.hpp"
@@ -79,11 +81,13 @@ static constexpr PropertyHintEntry property_hints[] = {
   { PROPERTY_HINT_PASSWORD, "Password" },
   { PROPERTY_HINT_TOOL_BUTTON, "ToolButton" },
   { PROPERTY_HINT_ONESHOT, "Oneshot" },
-  { PROPERTY_HINT_MAX, "" },
+  { PROPERTY_HINT_GROUP_ENABLE, "GroupEnable" },
+  { PROPERTY_HINT_INPUT_NAME, "InputName" },
+  { PROPERTY_HINT_FILE_PATH, "FilePath" }
 };
 
 static String get_property_hint_hint_string() {
-  static String result = "";
+  static String result {};
 
   if (result.is_empty()) {
     for (auto &entry : property_hints) {
@@ -138,10 +142,10 @@ static constexpr PropertyUsageEntry property_usage_flags[] = {
 };
 
 static String get_property_usage_flags_hint_string() {
-  static String result{};
+  static String result {};
 
   if (result.is_empty()) {
-    for (const PropertyUsageEntry &entry : property_usage_flags) {
+    for (auto &entry : property_usage_flags) {
       if (not result.is_empty()) {
         result += ",";
       }
@@ -164,7 +168,10 @@ void DynamicPropertyInfo::_bind_methods() {
   SORUS_BIND_PROPERTY_ENUM(type, get_variant_type_hint_string());
   SORUS_BIND_PROPERTY_ENUM(hint,get_property_hint_hint_string());
   SORUS_BIND_PROPERTY_STRING(hint_string);
+
+  ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Usage bitfield", "usage");
   SORUS_BIND_PROPERTY_FLAGS(usage, get_property_usage_flags_hint_string());
+
   SORUS_BIND_PROPERTY_DICTIONARY(
     property_info_dict,
     vformat(
@@ -176,7 +183,6 @@ void DynamicPropertyInfo::_bind_methods() {
     ),
     PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_READ_ONLY
   );
-  SORUS_BIND_PROPERTY_RESOURCE(SECTION_END, __CLASS__SECTION__END__::get_class_static());
 }
 
 void DynamicPropertyInfo::_validate_property(PropertyInfo &p_property) const {
@@ -217,7 +223,7 @@ Dictionary DynamicPropertyInfo::get_property_info_dict() const {
 }
 
 String DynamicPropertyInfo::get_property_names_hint_string() const {
-  Array keys {property_info_dict.keys()};
+  Array keys = property_info_dict.keys();
   String out {};
 
   for (int i = 0; i < keys.size(); i++) {
@@ -225,7 +231,7 @@ String DynamicPropertyInfo::get_property_names_hint_string() const {
       out += ",";
     }
 
-    out += (String)keys[i];
+    out += (StringName)keys[i];
   }
 
   return out;
@@ -236,9 +242,6 @@ String DynamicPropertyInfo::get_property_names_hint_string() const {
     if (m_member == P_TOKEN(m_member)) \
       return; \
     m_member = P_TOKEN(m_member); \
-    if (is_root) { \
-      this->emit_changed(); \
-    } \
   } END_MACRO()
 
 #define DPI_GETTER(m_type, m_member) \
@@ -289,107 +292,9 @@ String DynamicPropertyInfo::get_property_names_hint_string() const {
 #undef DPI_SETTER
 #undef DPI_GETTER
 
-// +-----------------------------------------------------------------------------------------+
-// |================================ DYNAMIC_EDITOR_PROPERTY ================================|
-// +-----------------------------------------------------------------------------------------+
-
-void DynamicEditorProperty::_update_property() {
-  /** @todo Don't really know why any of this is necessary, thought EditorProperty::property_changed already handled all that */
-  if (native_editor) {
-    // native_editor->update_property();
-  }
-}
-
-void DynamicEditorProperty::setup(Object *p_object, PropertyInfo p_property_info, bool p_wide) {
-  if (native_editor) {
-    native_editor->queue_free();
-    native_editor = nullptr;
-  }
-  
-  native_editor = EditorInspector::instantiate_property_editor(
-    p_object, 
-    p_property_info.type, 
-    p_property_info.name, 
-    static_cast<PropertyHint>(p_property_info.hint), 
-    p_property_info.hint_string, 
-    p_property_info.usage, 
-    p_wide
-  ); 
-  
-  if (not native_editor) { 
-    return;
-  } 
-  
-  this->set_draw_label(false);
-  
-  this->add_child(native_editor);
-  
-  native_editor->set_draw_label(true);
-  native_editor->set_object_and_property(p_object, p_property_info.name);
-  native_editor->connect(
-    SIGNAL(native_editor, property_changed), 
-    callable_mp(this, &DynamicEditorProperty::_on_native_property_changed)
-  );
-}
-
-void DynamicEditorProperty::_on_native_property_changed(const StringName &p_property, const Variant &p_value, const StringName &p_field, bool p_changing) {
-  this->emit_changed(this->get_edited_property(), p_value, p_field, p_changing);
-}
-
 // +----------------------------------------------------------------------------------------+
 // |======================== DYNAMIC_PROPERTY_INFO_INSPECTOR_PLUGIN ========================|
 // +----------------------------------------------------------------------------------------+
-
-godot::HashMap<Node*, HashMap<StringName, EditorProperty*>> property_editors;
-#include "godot_cpp/classes/editor_spin_slider.hpp"
-#include "godot_cpp/classes/line_edit.hpp"
-#include "godot_cpp/classes/editor_interface.hpp"
-#include "godot_cpp/templates/pair.hpp"
-
-static void print_tree(Node *p_node, int p_indent = 0) {
-    if (p_node == nullptr) {
-        return;
-    }
-
-    Node* x = p_node;
-    HashMap<StringName, StringName> lookup;
-
-    if (not p_node->is_class(Node::get_class_static())) {
-      print_line("FLAG");
-      return;
-    }
-
-    StringName o_class = p_node->get_class();
-    String indent {};
-    for (int i = 0; i < p_indent; i++) {
-        indent += "\t";
-    }
-    if (lookup.has(o_class)) {
-      debug_print_rich(
-        vformat(
-          COLOR_RED("%s%s <%s>: %s"),
-          indent,
-          p_node->get_name(),
-          o_class,
-          p_node->call(lookup[o_class])
-        )
-      );
-    } else {
-      debug_print_rich(
-        vformat(
-          COLOR_RED("F: %s%s <0x%s>"),
-          indent,
-          p_node->get_class(),
-          String::num_uint64(uint64_t(p_node), 16)
-        )
-      );
-    }
-
-    for (int i = 0; i < x->get_child_count(); i++) {
-      Node* inner = x->get_child(i);
-      print_tree(inner, p_indent + 2);
-    }
-}
 
 static const Variant *get_default_variant_values() {
   struct DefaultVariantValues{
@@ -446,6 +351,185 @@ static const Variant *get_default_variant_values() {
 	return default_variant_values.values;
 }
 
+/**
+Rules:
+
+  Hint changed, no hint string reffers to the case where hint is changed to X hint value and hint_string is empty
+  Hint changed reffers to the case where hint is changed to X hint value, wether or not the hint_string is valid comes later in the case, this case always has priority
+  Hint string changed reffers to the case where hint_string has been changed and hint has stayed the same since last time
+
+  - RANGE:
+    - Hint changed, no hint_string: not valid
+    - Hint changed: max value in hint_string
+    - Hint string changed: Check if current value is valid and return it if true, as hint changed if not
+  - ENUM:
+    - Hint changed, no hint_string: not valid
+    - Hint changed: first value in hint_string
+    - Hint string changed: Check if current value is valid and return it if true, as hint changed if not
+  - FLAGS:
+    - Hint changed, no hint_string: not valid
+    - Hint changed: set to 0 no flags active
+    - Hint string changed: Check if current value is valid and return it if true, as hint changed if not
+  - COLOR_NO_ALPHA:
+    - Hint changed, no hint_string: ? Documentation says nothing about hint_string: "● PROPERTY_HINT_COLOR_NO_ALPHA = 21 Sugiere que una propiedad de tipo Color debe editarse sin afectar su transparencia (Color.a no es editable)."
+    - Hint changed: set to Color()
+    - Hint string changed: ?
+*/
+
+static Variant normalize_range(const PropertyInfo &p_property_info, const Variant &p_value) {
+  Variant::Type type = p_property_info.type;
+  if (type != Variant::INT && type != Variant::FLOAT) {
+    return {};
+  }
+
+  /** From range hint_string "min,max,..." ensure at least min and max values */
+  PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
+  if (hint_string_entries.size() < 2) {
+    return {};
+  }
+
+  #define NORMALIZE_TYPE(m_type) do { \
+    if (not hint_string_entries[0].JOIN(is_valid,m_type)() || not hint_string_entries[1].JOIN(is_valid,m_type)()) { \
+      return {}; \
+    } \
+    if (p_value == Variant()) { \
+      return hint_string_entries[1].JOIN(to,m_type)(); \
+    } \
+    return CLAMP((m_type)p_value, hint_string_entries[0].JOIN(to,m_type)(), hint_string_entries[1].JOIN(to,m_type)()); \
+   } while(false)
+
+  if (type == Variant::INT) {
+    NORMALIZE_TYPE(int);
+  } else {
+    NORMALIZE_TYPE(float);
+  }
+
+  #undef NORMALIZE_TYPE
+
+  return {};
+}
+
+static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant &p_value) {
+  Variant::Type type = p_property_info.type;
+  if (type != Variant::INT && type != Variant::STRING && type != Variant::STRING_NAME) {
+    return {};
+  }
+
+  PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
+  if (hint_string_entries.is_empty()) {
+    return {};
+  }
+
+  String first_entry = hint_string_entries[0];
+  int64_t first_entry_numeric;
+
+  if (type != Variant::INT) {
+    if (hint_string_entries.has(String(p_value))) {
+      return {p_value};
+    }
+
+    return first_entry;
+  }
+
+  /** In hint_string's PackedStringArray ["a","b:10","c","d","e:10", "f:20"] get numerics by slicing every 1th (0-wise) element */
+  int64_t last_visited;
+  bool first_visit = true;
+
+  for (String &entry : hint_string_entries) {
+    String entry_numeric = entry.get_slice(":", 1);
+
+    if (entry_numeric == entry || entry_numeric.is_empty()) {
+      last_visited = first_visit ? 0 : last_visited + 1;
+    } else {
+      last_visited = entry_numeric.to_int();
+    }
+
+    if (first_visit) {
+      first_entry_numeric = last_visited;
+      first_visit = false;
+    }
+
+    if ((int64_t)p_value == last_visited) {
+      return {p_value};
+    }
+  }
+
+  return {first_entry_numeric};
+}
+
+static Variant normalize_flags(const PropertyInfo &p_property_info, const Variant &p_value) {
+  if (p_property_info.type != Variant::INT) {
+    return {};
+  }
+
+  if (p_value == Variant()) {
+    return {0};
+  }
+
+  /** For flags hint strings entry position is absolute truth if no specific value is provided "A:16,B,C" @A = 16, B = 2, C = 4 */
+  PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
+  if (hint_string_entries.is_empty()) {
+    return {};
+  }
+
+  uint32_t current_bit = 0;
+  uint32_t bit_mask = 0;
+  for (String& entry : hint_string_entries) {
+    String bit_value_str = entry.get_slice(":", 1);
+    uint32_t bit_value;
+
+    if (bit_value_str == entry || bit_value_str.is_empty()) {
+      bit_value = 1u << current_bit;
+    } else {
+      bit_value = bit_value_str.to_int();
+    }
+
+    bit_mask |= (uint32_t)p_value & bit_value;
+    current_bit++;
+  }
+
+  return {bit_mask};
+}
+
+static Variant normalize_value(const PropertyInfo &p_property_info, const Variant& p_value = Variant()) {
+  Variant out {};
+
+  Variant::Type type = p_property_info.type;
+  if (type == Variant::ARRAY) {
+    /** Call some shi for arrays */
+  }
+
+  if (type == Variant::DICTIONARY) {
+    /** Call some shi for dictionaries */
+  }
+
+  if (type == Variant::OBJECT) {
+    /** Call some shi for objects */
+  }
+
+  switch (p_property_info.hint) {
+    case PROPERTY_HINT_RANGE:
+      out = normalize_range(p_property_info, p_value);
+      break;
+    case PROPERTY_HINT_ENUM:
+      out = normalize_enum(p_property_info, p_value);
+      break;
+    case PROPERTY_HINT_FLAGS:
+      out = normalize_flags(p_property_info, p_value);
+      break;
+    /** @todo handle other hint cases */
+    default:
+      /** @todo maybe if p_value's type is already p_property_info.type is better to return the same value */
+      break;
+  }
+
+  if (out != Variant()) {
+    return out;
+  }
+
+  return get_default_variant_values()[p_property_info.type];
+}
+
 bool DynamicPropertyInfoInspectorPlugin::find_root_dpi(const Object *p_object, Ref<DynamicPropertyInfo> *r_dpi, StringName *r_dpi_name) {
   if (p_object == nullptr) {
     return false;
@@ -477,16 +561,31 @@ void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object
     return;
   }
 
-  if (root_dpi.is_valid() && p_object->get(root_dpi->get_property_select()) == Variant()) {
-    p_object->set(root_dpi->get_property_select(), get_default_variant_values()[root_dpi->get_type()]);
+  if (root_dpi.is_valid()) {
+    Ref<DynamicPropertyInfo> previous = root_dpi->property_info_dict.get(root_dpi->property_select, nullptr);
+    if (previous.is_null()) {
+      return;
+    }
+
+    PropertyInfo root_pi = root_dpi->get_property_info();
+    String property = root_dpi->get_property_select();
+
+    if (root_dpi->type != previous->type || root_dpi->hint != previous->hint) {
+      Variant new_value = normalize_value(root_pi);
+      p_object->set(property, new_value);
+    } 
+    else if (root_dpi->hint_string != previous->hint_string) {
+      Variant new_value = normalize_value(root_pi, p_object->get(property));
+      p_object->set(property, new_value);
+    }
   }
 
-  print_tree(EditorInterface::get_singleton()->get_inspector());
-
-  p_object->notify_property_list_changed();
+  p_object->call_deferred("notify_property_list_changed");
 }
 
 bool DynamicPropertyInfoInspectorPlugin::_can_handle(Object *p_object) const {
+  debug_print_rich(vformat("CAN HANDLE >>> %s", p_object), true);
+
   if (p_object == nullptr) {
     return false;
   }
@@ -499,8 +598,6 @@ bool DynamicPropertyInfoInspectorPlugin::_can_handle(Object *p_object) const {
     return false;
   }
 
-  debug_print_rich(vformat("CAN HANDLE >>> %s", p_object), true);
-
   return find_root_dpi(p_object);
 }
 
@@ -509,14 +606,14 @@ void DynamicPropertyInfoInspectorPlugin::_parse_begin(Object *p_object) {
     return;
   }
 
+  debug_print_rich(vformat("PARSE BEGIN >>> %s", p_object), true);
+
   root_dpi.unref();
   root_dpi_name = StringName{};
 
   if (not find_root_dpi(p_object, &root_dpi, &root_dpi_name)) {
     return;
   }
-
-  debug_print_rich(vformat("PARSE BEGIN >>> %s", p_object), true);
 
   if (root_dpi.is_null()) {
     root_dpi.instantiate();
@@ -540,8 +637,6 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
     return false;
   }
 
-  Ref<DynamicPropertyInfo> root_dpi;
-  find_root_dpi(p_object, &root_dpi);
   if (root_dpi.is_null()) {
     return false;
   }
@@ -554,7 +649,10 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
       Callable bound_callable = callable_mp_static(&DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed).bind(p_object, root_dpi);
 
       if (extra_dpi->is_connected(SIGNAL(extra_dpi, changed), bound_callable)) {
-        debug_print_rich(vformat(COLOR_YELLOW("Previous '%s' resource disconnected, the '%s' instance will be used instead from now"), extra_dpi, root_dpi));
+        debug_print_rich(vformat(
+          COLOR_YELLOW("Previous '%s' resource disconnected, the '%s' instance will be used instead from now"), extra_dpi, root_dpi),
+          true
+        );
         extra_dpi->disconnect(SIGNAL(extra_dpi, changed), bound_callable);
       }
       extra_dpi->is_root = false;
@@ -578,9 +676,10 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
   serialized_dpi->property_info_dict.clear();
 
   root_dpi->property_info_dict[p_name] = serialized_dpi; /** @todo old removed props will still be serialized */
+
   debug_print_rich(vformat(
-    COLOR_GREEN("Dynamic property '%s' updated in '%s::%s' instance"), 
-    p_name, p_object, root_dpi)
+    COLOR_GREEN("Dynamic property '%s' updated in '%s::%s' instance"), p_name, p_object, root_dpi),
+    true
   );
   
   creating_native_editor() = true;
@@ -600,9 +699,45 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
   editor->set_object_and_property(p_object, p_name);
   this->add_property_editor(p_name, editor);
 
-  print_tree(editor);
-
   return true;
+}
+
+void DynamicPropertyInfoInspectorPlugin::_on_submit() {
+  if (root_dpi.is_valid() && root_dpi->is_root) {
+    root_dpi->emit_changed();
+  }
+}
+
+static Node* find_root_dpi_inspector_node(Object *p_object, const Ref<DynamicPropertyInfo> &p_root_dpi, Node *p_node) {
+  Node *out = nullptr;
+
+  if (p_node->get_class() == "EditorPropertyResource") {
+    EditorProperty *target = Object::cast_to<EditorProperty>(p_node);
+    StringName target_name = target->get_edited_property();
+
+    Ref<DynamicPropertyInfo> dpi = p_object->get(target_name);
+
+    if (dpi.is_valid() && dpi == p_root_dpi) {
+      return Object::cast_to<Node>(target);
+    }
+  }
+
+  TypedArray<Node> children =  p_node->get_children();
+
+  for (int i = 0; i < children.size(); i++) {
+    Node *child = Object::cast_to<Node>((Object*)(children[i]));
+    if (child == nullptr){
+      continue;
+    }
+
+    out = find_root_dpi_inspector_node(p_object, p_root_dpi, child);
+
+    if (out != nullptr) {
+      return out;
+    }
+  }
+
+  return out;
 }
 
 void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
@@ -610,9 +745,21 @@ void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
     return;
   }
 
-  // EditorInspectorSection x;
+  Button *submit_button = memnew(Button);
+  submit_button->set_text("Apply");
 
-  // this->add_property_editor(const String &p_property, Control *p_editor);
+  Node* root_dpi_inspector_node = find_root_dpi_inspector_node(p_object, root_dpi, EditorInterface::get_singleton()->get_inspector());
+  EditorProperty *x = Object::cast_to<EditorProperty>(root_dpi_inspector_node);
+  if (root_dpi_inspector_node != nullptr) {
+    submit_button->connect("pressed", callable_mp(this, &DynamicPropertyInfoInspectorPlugin::_on_submit));
+
+    TypedArray<Node> root_dpi_inspector_node_children = root_dpi_inspector_node->get_children();
+    Object::cast_to<Node>((Object*)root_dpi_inspector_node_children[1])->add_child(submit_button);
+  } else {
+    memdelete(submit_button);
+  }
+
+  debug_print_rich(vformat(COLOR_GREEN("%s - Inspector updated"), p_object));
 }
 
 // +-----------------------------------------------------------------------------------------+

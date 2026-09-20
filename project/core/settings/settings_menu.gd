@@ -11,5 +11,5 @@ func _ready() -> void:
 	Debug.set_verbose(false)
 
 #func _process(_delta: float) -> void:
-	#print(d_value1)
-	#print(d_value2)
+	#print("FLAG >>> ", d_value1)
+	#print("acdas".to_int())
