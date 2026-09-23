@@ -5,6 +5,7 @@
 #include "godot_cpp/classes/button.hpp"
 #include "godot_cpp/classes/editor_interface.hpp"
 #include "godot_cpp/classes/editor_inspector.hpp"
+#include "godot_cpp/classes/h_box_container.hpp"
 
 #include "godot_cpp/variant/callable_method_pointer.hpp"
 
@@ -12,6 +13,7 @@
 #include "utils/error_macros.hpp"
 #include "utils/debug.hpp"
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -193,7 +195,7 @@ void DynamicPropertyInfo::_validate_property(PropertyInfo &p_property) const {
     return;
   }
 
-  debug_print_rich(vformat("VALIDATE >>> %s[%s]", this, p_property.name), true);
+  // debug_print_rich(vformat("VALIDATE >>> %s[%s]", this, p_property.name), true);
 
   if (p_property.name != StringName(member_property_select)) {
     if (this->get_property_select() == StringName{PLACEHOLDER_PROPERTY_SELECT}) {
@@ -351,31 +353,6 @@ static const Variant *get_default_variant_values() {
 	return default_variant_values.values;
 }
 
-/**
-Rules:
-
-  Hint changed, no hint string reffers to the case where hint is changed to X hint value and hint_string is empty
-  Hint changed reffers to the case where hint is changed to X hint value, wether or not the hint_string is valid comes later in the case, this case always has priority
-  Hint string changed reffers to the case where hint_string has been changed and hint has stayed the same since last time
-
-  - RANGE:
-    - Hint changed, no hint_string: not valid
-    - Hint changed: max value in hint_string
-    - Hint string changed: Check if current value is valid and return it if true, as hint changed if not
-  - ENUM:
-    - Hint changed, no hint_string: not valid
-    - Hint changed: first value in hint_string
-    - Hint string changed: Check if current value is valid and return it if true, as hint changed if not
-  - FLAGS:
-    - Hint changed, no hint_string: not valid
-    - Hint changed: set to 0 no flags active
-    - Hint string changed: Check if current value is valid and return it if true, as hint changed if not
-  - COLOR_NO_ALPHA:
-    - Hint changed, no hint_string: ? Documentation says nothing about hint_string: "● PROPERTY_HINT_COLOR_NO_ALPHA = 21 Sugiere que una propiedad de tipo Color debe editarse sin afectar su transparencia (Color.a no es editable)."
-    - Hint changed: set to Color()
-    - Hint string changed: ?
-*/
-
 static Variant normalize_range(const PropertyInfo &p_property_info, const Variant &p_value) {
   Variant::Type type = p_property_info.type;
   if (type != Variant::INT && type != Variant::FLOAT) {
@@ -530,7 +507,7 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Varian
   return get_default_variant_values()[p_property_info.type];
 }
 
-bool DynamicPropertyInfoInspectorPlugin::find_root_dpi(const Object *p_object, Ref<DynamicPropertyInfo> *r_dpi, StringName *r_dpi_name) {
+static bool find_root_dpi(const Object *p_object, Ref<DynamicPropertyInfo> *r_dpi = nullptr, StringName *r_dpi_name = nullptr) {
   if (p_object == nullptr) {
     return false;
   }
@@ -554,6 +531,37 @@ bool DynamicPropertyInfoInspectorPlugin::find_root_dpi(const Object *p_object, R
   }
   
   return false;
+}
+
+static size_t find_inspector_editor_properties(const String &p_property_name, TypedArray<EditorProperty> &r_ed_props, bool p_stop_at_first = false, Node *p_root_node = nullptr) {
+  if (p_root_node == nullptr) {
+    p_root_node = EditorInterface::get_singleton()->get_inspector();
+  }
+
+  if (p_stop_at_first && r_ed_props.size() > 0) {
+    return r_ed_props.size();
+  }
+
+  if (p_root_node->is_class(EditorProperty::get_class_static())) {
+    EditorProperty *likely_target = Object::cast_to<EditorProperty>(p_root_node);
+
+    if (likely_target != nullptr && likely_target->get_edited_property() == p_property_name) {
+      r_ed_props.push_back(likely_target);
+    }
+  } else {
+    TypedArray<Node> children =  p_root_node->get_children();
+
+    for (int i = 0; i < children.size(); i++) {
+      Node *child = Object::cast_to<Node>((Object*)(children[i]));
+      if (child == nullptr){
+        continue;
+      }
+
+      find_inspector_editor_properties(p_property_name, r_ed_props, p_stop_at_first, child);
+    }
+  }
+
+  return r_ed_props.size();
 }
 
 void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object *p_object, const Ref<DynamicPropertyInfo> &root_dpi) {
@@ -583,9 +591,13 @@ void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object
   p_object->call_deferred("notify_property_list_changed");
 }
 
-bool DynamicPropertyInfoInspectorPlugin::_can_handle(Object *p_object) const {
-  debug_print_rich(vformat("CAN HANDLE >>> %s", p_object), true);
+void DynamicPropertyInfoInspectorPlugin::_on_submit() {
+  if (root_dpi.is_valid() && root_dpi->is_root) {
+    root_dpi->emit_changed();
+  }
+}
 
+bool DynamicPropertyInfoInspectorPlugin::_can_handle(Object *p_object) const {
   if (p_object == nullptr) {
     return false;
   }
@@ -593,6 +605,8 @@ bool DynamicPropertyInfoInspectorPlugin::_can_handle(Object *p_object) const {
   if (creating_native_editor()) {
     return false;
   }
+
+  debug_print_rich(vformat("CAN HANDLE >>> %s", p_object), true);
 
   if (p_object->is_class(DynamicPropertyInfo::get_class_static())) {
     return false;
@@ -645,10 +659,27 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
   if (prop.is_valid() && prop->is_class(DynamicPropertyInfo::get_class_static())) {
     Ref<DynamicPropertyInfo> extra_dpi = prop;
 
+    // ----- Extra dpi EditorProperty test for foreign plugins -----
+    // if (p_name == root_dpi_name) {
+    //   creating_native_editor() = true;
+    //   EditorProperty *editor = EditorInspector::instantiate_property_editor(
+    //     p_object,
+    //     Variant::INT, 
+    //     p_name, 
+    //     PropertyHint::PROPERTY_HINT_NONE,
+    //     "",
+    //     PROPERTY_USAGE_DEFAULT,
+    //     p_wide
+    //   );
+    //   creating_native_editor() = false;
+    //   editor->set_object_and_property(p_object, p_name);
+    //   this->add_property_editor(p_name, editor);
+    // }
+
     if (extra_dpi != root_dpi) {
       Callable bound_callable = callable_mp_static(&DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed).bind(p_object, root_dpi);
 
-      if (extra_dpi->is_connected(SIGNAL(extra_dpi, changed), bound_callable)) {
+      if (p_name != root_dpi_name && extra_dpi->is_connected(SIGNAL(extra_dpi, changed), bound_callable)) {
         debug_print_rich(vformat(
           COLOR_YELLOW("Previous '%s' resource disconnected, the '%s' instance will be used instead from now"), extra_dpi, root_dpi),
           true
@@ -702,61 +733,41 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
   return true;
 }
 
-void DynamicPropertyInfoInspectorPlugin::_on_submit() {
-  if (root_dpi.is_valid() && root_dpi->is_root) {
-    root_dpi->emit_changed();
-  }
-}
-
-static Node* find_root_dpi_inspector_node(Object *p_object, const Ref<DynamicPropertyInfo> &p_root_dpi, Node *p_node) {
-  Node *out = nullptr;
-
-  if (p_node->get_class() == "EditorPropertyResource") {
-    EditorProperty *target = Object::cast_to<EditorProperty>(p_node);
-    StringName target_name = target->get_edited_property();
-
-    Ref<DynamicPropertyInfo> dpi = p_object->get(target_name);
-
-    if (dpi.is_valid() && dpi == p_root_dpi) {
-      return Object::cast_to<Node>(target);
-    }
-  }
-
-  TypedArray<Node> children =  p_node->get_children();
-
-  for (int i = 0; i < children.size(); i++) {
-    Node *child = Object::cast_to<Node>((Object*)(children[i]));
-    if (child == nullptr){
-      continue;
-    }
-
-    out = find_root_dpi_inspector_node(p_object, p_root_dpi, child);
-
-    if (out != nullptr) {
-      return out;
-    }
-  }
-
-  return out;
-}
-
 void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
   if (p_object == nullptr) {
     return;
   }
 
-  Button *submit_button = memnew(Button);
-  submit_button->set_text("Apply");
+  TypedArray<EditorProperty> root_dpi_inspector_nodes;
+  find_inspector_editor_properties(root_dpi_name, root_dpi_inspector_nodes);
 
-  Node* root_dpi_inspector_node = find_root_dpi_inspector_node(p_object, root_dpi, EditorInterface::get_singleton()->get_inspector());
-  EditorProperty *x = Object::cast_to<EditorProperty>(root_dpi_inspector_node);
-  if (root_dpi_inspector_node != nullptr) {
+  for (int i = 0; i < root_dpi_inspector_nodes.size(); i++) {
+    EditorProperty *root_dpi_inspector_node = Object::cast_to<EditorProperty>((Object *)root_dpi_inspector_nodes[i]);
+    if (root_dpi_inspector_node == nullptr) {
+      continue;
+    }
+
+    HBoxContainer *button_target_node = nullptr;
+    TypedArray<Node> children = root_dpi_inspector_node->get_children();
+
+    if (children.size() > 1) {
+      /** WEAK: This line depends entirely on the correct HBoxContainer being on index 1 of root_dpi_inspector_node's children array, as of Godot 4.7.2 that seems to always be the case */
+      Node *likely_target_node = Object::cast_to<Node>((Object*)children[1]);
+
+      if (likely_target_node != nullptr) {
+        button_target_node = Object::cast_to<HBoxContainer>(likely_target_node);
+      }
+    }
+
+    if (button_target_node == nullptr) {
+      button_target_node = memnew(HBoxContainer);
+      root_dpi_inspector_node->add_child(button_target_node);
+    }
+
+    Button *submit_button = memnew(Button);
+    submit_button->set_text("Apply");
     submit_button->connect("pressed", callable_mp(this, &DynamicPropertyInfoInspectorPlugin::_on_submit));
-
-    TypedArray<Node> root_dpi_inspector_node_children = root_dpi_inspector_node->get_children();
-    Object::cast_to<Node>((Object*)root_dpi_inspector_node_children[1])->add_child(submit_button);
-  } else {
-    memdelete(submit_button);
+    button_target_node->add_child(submit_button);
   }
 
   debug_print_rich(vformat(COLOR_GREEN("%s - Inspector updated"), p_object));
@@ -777,3 +788,50 @@ void DynamicPropertyInfoEditorPlugin::_exit_tree() {
     inspector_plugin.unref();
   }
 }
+
+// bool FooInspectorPlugin::_can_handle(Object *p_object) const {
+//   if (p_object == nullptr) {
+//     return false;
+//   }
+
+//   if (creating_native_editor()) {
+//     return false;
+//   }
+
+//   debug_print_rich(vformat("FOO CAN HANDLE >>> %s", p_object));
+
+//   if (p_object->is_class(DynamicPropertyInfo::get_class_static())) {
+//     return false;
+//   }
+
+//   return find_root_dpi(p_object);
+// }
+
+// void FooInspectorPlugin::_parse_begin(Object* p_object) {
+//   print_line("FOO PARSE BEGIN >>> ", p_object);
+// };
+
+// bool FooInspectorPlugin::_parse_property(Object *p_object, Variant::Type p_type, const String &p_name, PropertyHint p_hint, const String &p_hint_string, BitField<PropertyUsageFlags> p_usage, bool p_wide) {
+//   if (not p_name.begins_with("d_")) {
+//     return false;
+//   }
+
+//   if (p_object == nullptr) {
+//     return false;
+//   }
+
+//   Ref<Resource> prop = p_object->get(p_name);
+//   if (prop.is_valid() && prop->is_class(DynamicPropertyInfo::get_class_static())) {
+//     return false;
+//   }
+
+//   print_line("FOO PARSE PROPERTY >>> ", p_name);
+//   creating_native_editor() = true;
+
+//   return false;
+// }
+
+// void FooInspectorPlugin::_parse_end(Object* p_object) {
+//   debug_print_rich(vformat(COLOR_GREEN("%s - FooInspector updated"), p_object));
+//   creating_native_editor() = false;
+// }

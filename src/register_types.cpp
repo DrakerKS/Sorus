@@ -26,8 +26,7 @@
 
 using namespace godot;
 
-void initialize_gdextension_types(ModuleInitializationLevel p_level)
-{
+void initialize_gdextension_types(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		GDREGISTER_CLASS(Debug);
 		GDREGISTER_CLASS(DemoContainer);
@@ -44,21 +43,12 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 		GDREGISTER_CLASS(DynamicPropertyInfoInspectorPlugin);
 		GDREGISTER_CLASS(DynamicPropertyInfoEditorPlugin);
 
+		// GDREGISTER_CLASS(FooInspectorPlugin);
+		// GDREGISTER_CLASS(FooEditorPlugin);
+
 		EditorPlugins::add_by_type<DynamicPropertyInfoEditorPlugin>();
+		// EditorPlugins::add_by_type<FooEditorPlugin>();
 	}
-
-	// GDREGISTER_CLASS(GameSettings);
-	// GDREGISTER_CLASS(AudioSettings);
-	// GDREGISTER_CLASS(VideoSettings);
-	// GDREGISTER_CLASS(GraphicsSettings);
-	// GDREGISTER_CLASS(AccessibilitySettings);
-	// GDREGISTER_CLASS(MouseKeyboardSettings);
-	// GDREGISTER_CLASS(MouseKeyboardSettingsPreset);
-	// GDREGISTER_CLASS(ControllerSettings);
-	// GDREGISTER_CLASS(ControllerSettingsPreset);
-
-	// GDREGISTER_CLASS(SettingsData);
-	// GDREGISTER_CLASS(SettingsManager);
 }
 
 void uninitialize_gdextension_types(ModuleInitializationLevel p_level) {

@@ -103,12 +103,12 @@ namespace godot {
         return value;
       }
 
-      static void on_dynamic_property_info_changed(Object *p_object, const Ref<DynamicPropertyInfo> &root_dpi);
-      static bool find_root_dpi(
-        const Object *p_object, 
-        Ref<DynamicPropertyInfo> *r_dpi = nullptr, 
-        StringName *r_dpi_name = nullptr
+      static void on_dynamic_property_info_changed(
+        Object *p_object, 
+        const Ref<DynamicPropertyInfo> &root_dpi
       );
+
+      void _on_submit();
 
     public:
       bool _can_handle(Object *p_object) const override;
@@ -123,8 +123,6 @@ namespace godot {
         bool p_wide
       ) override;
       void _parse_end(Object *p_object) override;
-
-      void _on_submit();
 
       DynamicPropertyInfoInspectorPlugin() = default;
       ~DynamicPropertyInfoInspectorPlugin() = default;
@@ -150,4 +148,59 @@ namespace godot {
       DynamicPropertyInfoEditorPlugin() = default;
       ~DynamicPropertyInfoEditorPlugin() = default;
   };
+
+  // class FooInspectorPlugin : public EditorInspectorPlugin {
+  //   GDCLASS(FooInspectorPlugin, EditorInspectorPlugin);
+
+  //   protected:
+  //     static void _bind_methods() { }
+
+  //   private:
+  //     static bool &creating_native_editor() {
+  //       static thread_local bool value = false;
+  //       return value;
+  //     }
+
+  //   public:
+  //     bool _can_handle(Object *p_object) const override;
+  //     void _parse_begin(Object *p_object) override;
+  //     bool _parse_property(
+  //       Object *p_object,
+  //       Variant::Type p_type,
+  //       const String &p_name,
+  //       PropertyHint p_hint,
+  //       const String &p_hint_string,
+  //       BitField<PropertyUsageFlags> p_usage,
+  //       bool p_wide
+  //     ) override;
+  //     void _parse_end(Object *p_object) override;
+
+  //     FooInspectorPlugin() = default;
+  //     ~FooInspectorPlugin() = default;
+  // };
+
+  // class FooEditorPlugin : public EditorPlugin {
+  //   GDCLASS(FooEditorPlugin, EditorPlugin);
+
+  //   protected:
+  //     static void _bind_methods() { }
+
+  //   private:
+  //     Ref<FooInspectorPlugin> inspector_plugin;
+
+  //   public:
+  //     void _enter_tree() override {
+  //       inspector_plugin.instantiate();
+  //       add_inspector_plugin(inspector_plugin);
+  //     };
+  //     void _exit_tree() override {
+  //       if (inspector_plugin.is_valid()) {
+  //         remove_inspector_plugin(inspector_plugin);
+  //         inspector_plugin.unref();
+  //       }
+  //     };
+
+  //     FooEditorPlugin() = default;
+  //     ~FooEditorPlugin() = default;
+  // };
 }
