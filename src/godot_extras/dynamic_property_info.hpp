@@ -16,8 +16,6 @@
 #include "godot_cpp/templates/hash_map.hpp"
 
 #include "utils/macros.hpp"
-#include <cstdint>
-#include <unordered_map>
 
 namespace godot {
 
@@ -35,7 +33,7 @@ namespace godot {
       SORUS_DECL(Variant::Type, type, Variant::NIL);
       SORUS_DECL(StringName, property_select);
       SORUS_DECL(uint32_t, hint, PROPERTY_HINT_NONE);
-      SORUS_DECL(String, hint_string)
+      SORUS_DECL(String, hint_string);
       SORUS_DECL(uint32_t, usage, PROPERTY_USAGE_DEFAULT);
       SORUS_DECL(Dictionary, property_info_dict); /*<[StringName, Ref<DynamicPropertyInfo>]>*/
 
@@ -148,59 +146,4 @@ namespace godot {
       DynamicPropertyInfoEditorPlugin() = default;
       ~DynamicPropertyInfoEditorPlugin() = default;
   };
-
-  // class FooInspectorPlugin : public EditorInspectorPlugin {
-  //   GDCLASS(FooInspectorPlugin, EditorInspectorPlugin);
-
-  //   protected:
-  //     static void _bind_methods() { }
-
-  //   private:
-  //     static bool &creating_native_editor() {
-  //       static thread_local bool value = false;
-  //       return value;
-  //     }
-
-  //   public:
-  //     bool _can_handle(Object *p_object) const override;
-  //     void _parse_begin(Object *p_object) override;
-  //     bool _parse_property(
-  //       Object *p_object,
-  //       Variant::Type p_type,
-  //       const String &p_name,
-  //       PropertyHint p_hint,
-  //       const String &p_hint_string,
-  //       BitField<PropertyUsageFlags> p_usage,
-  //       bool p_wide
-  //     ) override;
-  //     void _parse_end(Object *p_object) override;
-
-  //     FooInspectorPlugin() = default;
-  //     ~FooInspectorPlugin() = default;
-  // };
-
-  // class FooEditorPlugin : public EditorPlugin {
-  //   GDCLASS(FooEditorPlugin, EditorPlugin);
-
-  //   protected:
-  //     static void _bind_methods() { }
-
-  //   private:
-  //     Ref<FooInspectorPlugin> inspector_plugin;
-
-  //   public:
-  //     void _enter_tree() override {
-  //       inspector_plugin.instantiate();
-  //       add_inspector_plugin(inspector_plugin);
-  //     };
-  //     void _exit_tree() override {
-  //       if (inspector_plugin.is_valid()) {
-  //         remove_inspector_plugin(inspector_plugin);
-  //         inspector_plugin.unref();
-  //       }
-  //     };
-
-  //     FooEditorPlugin() = default;
-  //     ~FooEditorPlugin() = default;
-  // };
 }

@@ -81,6 +81,12 @@
     return StringName(name); \
     }())
 
+template<typename T, typename... TValidTypes>
+inline constexpr bool is_one_of_v = (std::is_same_v<T, TValidTypes> || ...);
+
+#define SORUS_ASSERT_VALID_TYPE(m_type, ...) \
+  static_assert(is_one_of_v<m_type, __VA_ARGS__>, "Provided type is not valid.")
+
 // +----------------------------------------------------------------------------------------+
 // |============================= MEMBER_COMPILE_TIME_CHECKING =============================|
 // +----------------------------------------------------------------------------------------+

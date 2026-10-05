@@ -1,108 +1,24 @@
 #include "dynamic_property_info.hpp"
+#include "godot_extras/globals.hpp"
 
-#include "godot_cpp/classes/object.hpp"
 #include "godot_cpp/classes/node.hpp"
 #include "godot_cpp/classes/button.hpp"
 #include "godot_cpp/classes/editor_interface.hpp"
-#include "godot_cpp/classes/editor_inspector.hpp"
 #include "godot_cpp/classes/h_box_container.hpp"
+#include "godot_cpp/classes/resource_uid.hpp"
 
 #include "godot_cpp/variant/callable_method_pointer.hpp"
+
+#include "godot_cpp/templates/hash_map.hpp"
+#include "godot_cpp/templates/pair.hpp"
+#include "godot_cpp/templates/vector.hpp"
 
 #include "utils/macros.hpp"
 #include "utils/error_macros.hpp"
 #include "utils/debug.hpp"
-#include <array>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <vector>
+#include <type_traits>
 
 using namespace godot;
-
-static String get_variant_type_hint_string() {
-  static String result = "";
-
-  if (result.is_empty()) {
-    for (int i = 0; i < Variant::VARIANT_MAX; i++) {
-      if (i > 0) {
-        result += ",";
-      }
-
-      result += Variant::get_type_name(static_cast<Variant::Type>(i));
-    }
-  }
-
-  return result;
-}
-
-struct PropertyHintEntry {
-  PropertyHint hint;
-  const char *name;
-};
-
-static constexpr PropertyHintEntry property_hints[] = {
-  { PROPERTY_HINT_NONE, "None" },
-  { PROPERTY_HINT_RANGE, "Range" },
-  { PROPERTY_HINT_ENUM, "Enum" },
-  { PROPERTY_HINT_ENUM_SUGGESTION, "EnumSuggestion" },
-  { PROPERTY_HINT_EXP_EASING, "ExpEasing" },
-  { PROPERTY_HINT_LINK, "Link" },
-  { PROPERTY_HINT_FLAGS, "Flags" },
-  { PROPERTY_HINT_LAYERS_2D_RENDER, "Layers2DRender" },
-  { PROPERTY_HINT_LAYERS_2D_PHYSICS, "Layers2DPhysics" },
-  { PROPERTY_HINT_LAYERS_2D_NAVIGATION, "Layers2DNavigation" },
-  { PROPERTY_HINT_LAYERS_3D_RENDER, "Layers3DRender" },
-  { PROPERTY_HINT_LAYERS_3D_PHYSICS, "Layers3DPhysics" },
-  { PROPERTY_HINT_LAYERS_3D_NAVIGATION, "Layers3DNavigation" },
-  { PROPERTY_HINT_LAYERS_AVOIDANCE, "LayersAvoidance" },
-  { PROPERTY_HINT_FILE, "File" },
-  { PROPERTY_HINT_DIR, "Dir" },
-  { PROPERTY_HINT_GLOBAL_FILE, "GlobalFile" },
-  { PROPERTY_HINT_GLOBAL_DIR, "GlobalDir" },
-  { PROPERTY_HINT_RESOURCE_TYPE, "ResourceType" },
-  { PROPERTY_HINT_MULTILINE_TEXT, "MultilineText" },
-  { PROPERTY_HINT_EXPRESSION, "Expression" },
-  { PROPERTY_HINT_PLACEHOLDER_TEXT, "PlaceholderText" },
-  { PROPERTY_HINT_COLOR_NO_ALPHA, "ColorNoAlpha" },
-  { PROPERTY_HINT_OBJECT_ID, "ObjectId" },
-  { PROPERTY_HINT_TYPE_STRING, "TypeString" },
-  { PROPERTY_HINT_NODE_PATH_TO_EDITED_NODE, "NodePathToEditedNode" },
-  { PROPERTY_HINT_OBJECT_TOO_BIG, "ObjectTooBig" },
-  { PROPERTY_HINT_NODE_PATH_VALID_TYPES, "NodePathValidTypes" },
-  { PROPERTY_HINT_SAVE_FILE, "SaveFile" },
-  { PROPERTY_HINT_GLOBAL_SAVE_FILE, "GlobalSaveFile" },
-  { PROPERTY_HINT_INT_IS_OBJECTID, "IntIsObjectId" },
-  { PROPERTY_HINT_INT_IS_POINTER, "IntIsPointer" },
-  { PROPERTY_HINT_ARRAY_TYPE, "ArrayType" },
-  { PROPERTY_HINT_DICTIONARY_TYPE, "DictionaryType" },
-  { PROPERTY_HINT_LOCALE_ID, "LocaleId" },
-  { PROPERTY_HINT_LOCALIZABLE_STRING, "LocalizableString" },
-  { PROPERTY_HINT_NODE_TYPE, "NodeType" },
-  { PROPERTY_HINT_HIDE_QUATERNION_EDIT, "HideQuaternionEdit" },
-  { PROPERTY_HINT_PASSWORD, "Password" },
-  { PROPERTY_HINT_TOOL_BUTTON, "ToolButton" },
-  { PROPERTY_HINT_ONESHOT, "Oneshot" },
-  { PROPERTY_HINT_GROUP_ENABLE, "GroupEnable" },
-  { PROPERTY_HINT_INPUT_NAME, "InputName" },
-  { PROPERTY_HINT_FILE_PATH, "FilePath" }
-};
-
-static String get_property_hint_hint_string() {
-  static String result {};
-
-  if (result.is_empty()) {
-    for (auto &entry : property_hints) {
-      if (not result.is_empty()) {
-        result += ",";
-      }
-
-      result += entry.name;
-    }
-  }
-
-  return result;
-}
 
 struct PropertyUsageEntry {
   PropertyUsageFlags usage;
@@ -110,7 +26,6 @@ struct PropertyUsageEntry {
 };
 
 static constexpr PropertyUsageEntry property_usage_flags[] = {
-  // { PROPERTY_USAGE_NONE, "None" },
   { PROPERTY_USAGE_DEFAULT, "Default" },
   { PROPERTY_USAGE_STORAGE, "Storage" },
   { PROPERTY_USAGE_EDITOR, "Editor" },
@@ -143,6 +58,49 @@ static constexpr PropertyUsageEntry property_usage_flags[] = {
   { PROPERTY_USAGE_SECRET, "Secret" },
 };
 
+// +-----------------------------------------------------------------------------------------+
+// |================================= DYNAMIC_PROPERTY_INFO =================================|
+// +-----------------------------------------------------------------------------------------+
+
+static String get_variant_type_hint_string() {
+  static String result = "";
+
+  if (result.is_empty()) {
+    for (int i = 0; i < Variant::VARIANT_MAX; i++) {
+      if (i > 0) {
+        result += ",";
+      }
+
+      result += Variant::get_type_name(static_cast<Variant::Type>(i));
+      Variant::get_type_by_name("INT");
+    }
+  }
+
+  return result;
+}
+
+static String get_property_hint_hint_string() {
+  static String hint_string {};
+  if (not hint_string.is_empty()) {
+    return hint_string;
+  }
+
+  Vector<NamedValue<PropertyHint>> entries = property_hint_named_values();
+  // for (const NamedValue<PropertyHint> &entry : entries) {
+  //   if (not hint_string.is_empty()) {
+  //     hint_string += ",";
+  //   }
+
+  //   String name = entry.second;
+
+  //   hint_string += name;
+  //   hint_string += ":";
+  //   hint_string += String::num_int64(entry.first);
+  // }
+
+  return hint_string;
+}
+
 static String get_property_usage_flags_hint_string() {
   static String result {};
 
@@ -161,19 +119,18 @@ static String get_property_usage_flags_hint_string() {
   return result;
 }
 
-// +-----------------------------------------------------------------------------------------+
-// |================================= DYNAMIC_PROPERTY_INFO =================================|
-// +-----------------------------------------------------------------------------------------+
-
 void DynamicPropertyInfo::_bind_methods() {
   SORUS_BIND_PROPERTY_ENUM_STRING(property_select, PLACEHOLDER_PROPERTY_SELECT);
   SORUS_BIND_PROPERTY_ENUM(type, get_variant_type_hint_string());
   SORUS_BIND_PROPERTY_ENUM(hint,get_property_hint_hint_string());
-  SORUS_BIND_PROPERTY_STRING(hint_string);
 
-  ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Usage bitfield", "usage");
+  // SORUS_BIND_PROPERTY_STRING(hint_string);
+  SORUS_BIND_PROPERTY_MULTILINE_TEXT(hint_string);
+
+  ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Usage bitfield", member_usage);
   SORUS_BIND_PROPERTY_FLAGS(usage, get_property_usage_flags_hint_string());
 
+  ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Properties", member_property_info_dict);
   SORUS_BIND_PROPERTY_DICTIONARY(
     property_info_dict,
     vformat(
@@ -195,7 +152,7 @@ void DynamicPropertyInfo::_validate_property(PropertyInfo &p_property) const {
     return;
   }
 
-  // debug_print_rich(vformat("VALIDATE >>> %s[%s]", this, p_property.name), true);
+  debug_print_rich(vformat("VALIDATE >>> %s[%s]", this, p_property.name), true);
 
   if (p_property.name != StringName(member_property_select)) {
     if (this->get_property_select() == StringName{PLACEHOLDER_PROPERTY_SELECT}) {
@@ -353,6 +310,8 @@ static const Variant *get_default_variant_values() {
 	return default_variant_values.values;
 }
 
+static Variant normalize_value(const PropertyInfo &p_property_info, const Object* p_object = nullptr, const Variant &p_value = Variant());
+
 static Variant normalize_range(const PropertyInfo &p_property_info, const Variant &p_value) {
   Variant::Type type = p_property_info.type;
   if (type != Variant::INT && type != Variant::FLOAT) {
@@ -392,17 +351,24 @@ static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant
     return {};
   }
 
+  if (p_property_info.hint == PROPERTY_HINT_ENUM_SUGGESTION && type == Variant::INT) {
+    return {};
+  }
+
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
   if (hint_string_entries.is_empty()) {
     return {};
   }
 
   String first_entry = hint_string_entries[0];
-  int64_t first_entry_numeric;
 
   if (type != Variant::INT) {
     if (hint_string_entries.has(String(p_value))) {
       return {p_value};
+    }
+
+    if (p_property_info.hint == PROPERTY_HINT_ENUM_SUGGESTION) {
+      return {String()};
     }
 
     return first_entry;
@@ -411,6 +377,7 @@ static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant
   /** In hint_string's PackedStringArray ["a","b:10","c","d","e:10", "f:20"] get numerics by slicing every 1th (0-wise) element */
   int64_t last_visited;
   bool first_visit = true;
+  int64_t first_entry_numeric;
 
   for (String &entry : hint_string_entries) {
     String entry_numeric = entry.get_slice(":", 1);
@@ -432,6 +399,23 @@ static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant
   }
 
   return {first_entry_numeric};
+}
+
+static Variant normalize_exp_easing(const PropertyInfo &p_property_info, const Variant &p_value) {
+  if (p_property_info.type != Variant::FLOAT) { 
+    return {};
+  }
+
+  if (p_value == Variant()) {
+    return {0.0f};
+  }
+
+  PackedStringArray hint_string_entries = p_property_info.hint_string.split(",",false);
+  if (hint_string_entries.has("positive_only") && (float)p_value < 0) {
+    return Variant{};
+  }
+
+  return {(float)p_value};
 }
 
 static Variant normalize_flags(const PropertyInfo &p_property_info, const Variant &p_value) {
@@ -468,43 +452,314 @@ static Variant normalize_flags(const PropertyInfo &p_property_info, const Varian
   return {bit_mask};
 }
 
-static Variant normalize_value(const PropertyInfo &p_property_info, const Variant& p_value = Variant()) {
+static Variant normalize_file(const PropertyInfo &p_property_info, const Variant &p_value) {
+  if (p_property_info.type != Variant::STRING) {
+    return {};
+  }
+
+  if (p_value == Variant()) {
+    return {};
+  }
+
+  String path = (String)p_value;
+  if (path.begins_with("uid://")) {
+    path = ResourceUID::uid_to_path(path);
+  }
+
+  if (not path.begins_with("/") && not path.begins_with("res://")) {
+    return {};
+  }
+
+  Variant out = (p_property_info.hint == PROPERTY_HINT_GLOBAL_FILE || p_property_info.hint == PROPERTY_HINT_FILE_PATH) ? Variant{path} : Variant{p_value};
+
+  PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
+  if (hint_string_entries.is_empty()) {
+    return {out};
+  }
+
+  for (String &entry : hint_string_entries) {
+    String extension = entry.get_slice(".", 1);
+    if (extension == entry || extension.is_empty()) {
+      continue;
+    }
+
+    extension = "." + extension;
+    if (entry.ends_with(extension)) {
+      return {out};
+    }
+  }
+
+  return {};
+}
+
+static Variant normalize_resource_type(const PropertyInfo &p_property_info, const Variant &p_value) {
+  Variant::Type type = p_property_info.type;
+  if (type != Variant::OBJECT) {
+    return {};
+  }
+
+  if (p_value == Variant()) {
+    return {};
+  }
+
+  Ref<Resource> out = p_value;
+  if (out.is_null()) {
+    return {};
+  }
+
+  PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
+  if (hint_string_entries.is_empty()) {
+    return {p_value};
+  }
+
+  for (String &entry : hint_string_entries) {
+    if (out->is_class(entry)) {
+      return {p_value};
+    }
+  }
+
+  return {};
+}
+
+static Variant normalize_object_id(const PropertyInfo &p_property_info, const Variant &p_value) {
+  /** @todo Implement */
+
+  return {};
+}
+
+static Variant normalize_node_path_valid_types(const PropertyInfo &p_property_info, const Object* p_object, const Variant &p_value) {
+  if (p_property_info.type != Variant::NODE_PATH) {
+    return {};
+  }
+
+  if (p_value == Variant()) {
+    return {};
+  }
+
+  PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
+  if (hint_string_entries.is_empty()) {
+    return {};
+  }
+
+  const Node *node = Object::cast_to<Node>(p_object);
+  if (node == nullptr) {
+    return {};
+  }
+
+  const Node *target = node->get_node_or_null((NodePath)p_value);
+  if (target == nullptr) {
+    return {};
+  }
+
+  for (String &entry : hint_string_entries) {
+    if (target->is_class(entry)) {
+      return {p_value};
+    }
+  }
+
+  return {};
+}
+
+static Variant normalize_array_type(const PropertyInfo &p_property_info, const Object* p_object, const Variant &p_value) {
+  if (p_property_info.type != Variant::ARRAY) {
+    return {};
+  }
+
+  if (p_value == Variant()) {
+    return {};
+  }
+
+  if (p_property_info.hint_string.is_empty()) {
+    return {};
+  }
+
+  /**
+    Example hint_strings: 
+      subType/subTypeHint:subTypeHintString
+
+      2/2:a,b,c,d -> int:Enum:a,b,c,d
+
+    Not yet supported:
+      28/31:1: -> Array:ArrayType:bool
+      28:24/17:DynamicPropertyInfo -> Array:Object/ResourceType:DynamicPropertyInfo
+      28:2/2:a,b,c,d -> Array:int/Enum:a,b,c,d
+  */
+
+  Variant::Type subtype;
+  PropertyHint subtype_hint;
+  String subtype_hint_string;
+
+  int hint_subtype_separator = p_property_info.hint_string.find(":");
+  if (hint_subtype_separator >= 0) {
+    String subtype_string = p_property_info.hint_string.substr(0, hint_subtype_separator);
+    int slash_pos = subtype_string.find("/");
+    if (slash_pos >= 0) {
+      subtype_hint = PropertyHint(subtype_string.substr(slash_pos + 1).to_int());
+      subtype_string = subtype_string.substr(0, slash_pos);
+    }
+
+    subtype_hint_string = p_property_info.hint_string.substr(hint_subtype_separator + 1);
+    subtype = Variant::Type(subtype_string.to_int());
+
+    print_line("FLAG >>> ", subtype);
+    print_line("FLAG >>> ", subtype_hint);
+    print_line("FLAG >>> ", subtype_hint_string);
+  } else {
+    subtype = Variant::get_type_by_name(p_property_info.hint_string);
+  
+    if (subtype == Variant::VARIANT_MAX) {
+      subtype = Variant::OBJECT;
+      subtype_hint = PROPERTY_HINT_RESOURCE_TYPE;
+      subtype_hint_string = p_property_info.hint_string;
+    }
+  }
+
+  if (subtype == Variant::ARRAY || subtype == Variant::DICTIONARY) {
+    
+  }
+
+  Array array = Array(p_value);
+  if (array.is_empty()) {
+    return {p_value};
+  }
+
+  for (int i = 0; i < array.size(); i++) {
+     PropertyInfo sub_property_info = {
+      subtype,
+      String(p_property_info.name) + '[' + String::num_int64(i) + ']',
+      subtype_hint,
+      subtype_hint_string
+    };
+
+    Variant &curr = array[i];
+    curr = normalize_value(sub_property_info, p_object, curr);
+  }
+
+  return {array};
+}
+
+static Variant normalize_string_type(const PropertyInfo &p_property_info, const Object* p_object, const Variant &p_value) {
+  Variant::Type type = p_property_info.type;
+
+  switch (type) {
+    case Variant::ARRAY:
+      return normalize_array_type(p_property_info, p_object, p_value);
+      break;
+    case Variant::DICTIONARY:
+      break;
+    case Variant::STRING:
+    default:
+      break;
+  }
+
+  return {};
+}
+
+static Variant normalize_node_type(const PropertyInfo &p_property_info, const Variant &p_value) {
+  if (p_property_info.type != Variant::OBJECT) {
+    return {};
+  }
+
+  if (p_value == Variant()) {
+    return {};
+  }
+
+  Node *node = Object::cast_to<Node>((Object*)p_value);
+  if (node == nullptr) {
+    return {};
+  }
+
+  PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
+  if (hint_string_entries.is_empty()) {
+    return {p_value};
+  }
+
+  for (String &entry : hint_string_entries) {
+    if (node->is_class(entry)) {
+      return {p_value};
+    }
+  }
+
+  return {};
+}
+
+static Variant normalize_value(const PropertyInfo &p_property_info, const Object* p_object /* = nullptr */, const Variant &p_value /* = Variant() */) {
   Variant out {};
 
-  Variant::Type type = p_property_info.type;
-  if (type == Variant::ARRAY) {
-    /** Call some shi for arrays */
+  PropertyInfo pi {p_property_info};
+  if (pi.type == Variant::ARRAY || pi.type == Variant::DICTIONARY) {
+    if (pi.hint == PROPERTY_HINT_NONE) {
+      pi.hint = PROPERTY_HINT_TYPE_STRING;
+    }
   }
 
-  if (type == Variant::DICTIONARY) {
-    /** Call some shi for dictionaries */
+  Variant value {p_value};
+  if (p_value == Variant() && p_object) {
+    value = p_object->get(pi.name);
   }
 
-  if (type == Variant::OBJECT) {
-    /** Call some shi for objects */
-  }
-
-  switch (p_property_info.hint) {
+  switch (pi.hint) {
     case PROPERTY_HINT_RANGE:
-      out = normalize_range(p_property_info, p_value);
+      out = normalize_range(pi, value);
       break;
     case PROPERTY_HINT_ENUM:
-      out = normalize_enum(p_property_info, p_value);
+      out = normalize_enum(pi, value);
+      break;
+    case PROPERTY_HINT_ENUM_SUGGESTION:
+      out = normalize_enum(pi, value);
       break;
     case PROPERTY_HINT_FLAGS:
-      out = normalize_flags(p_property_info, p_value);
+      out = normalize_flags(pi, value);
       break;
-    /** @todo handle other hint cases */
+    case PROPERTY_HINT_EXP_EASING:
+      out = normalize_exp_easing(pi, value);
+      break;
+    case PROPERTY_HINT_FILE:
+    case PROPERTY_HINT_GLOBAL_FILE:
+    case PROPERTY_HINT_SAVE_FILE:
+    case PROPERTY_HINT_GLOBAL_SAVE_FILE:
+    case PROPERTY_HINT_FILE_PATH:
+      out = normalize_file(pi, value);
+      break;
+    case PROPERTY_HINT_RESOURCE_TYPE:
+      out = normalize_resource_type(pi, value);
+      break;
+    case PROPERTY_HINT_OBJECT_ID:
+      /** @todo handle */
+      break;
+    case PROPERTY_HINT_TYPE_STRING:
+      out = normalize_string_type(pi, p_object, value);
+      break;
+    case PROPERTY_HINT_NODE_PATH_VALID_TYPES:
+      out = normalize_node_path_valid_types(pi, p_object, value);
+      break;
+    case PROPERTY_HINT_ARRAY_TYPE:
+      out = normalize_array_type(pi, p_object, value);
+      break;
+    case PROPERTY_HINT_DICTIONARY_TYPE:
+      /** @todo handle */
+      break;
+    case PROPERTY_HINT_NODE_TYPE:
+      out = normalize_node_type(pi, value);
+      break;
+    case PROPERTY_HINT_INPUT_NAME:
+      /** @todo handle */
+      break;
     default:
-      /** @todo maybe if p_value's type is already p_property_info.type is better to return the same value */
       break;
   }
 
-  if (out != Variant()) {
-    return out;
+  if (out == Variant()) {
+    out = get_default_variant_values()[pi.type];
   }
 
-  return get_default_variant_values()[p_property_info.type];
+  bool use_quotes = pi.type == Variant::STRING || pi.type == Variant::STRING_NAME || pi.type == Variant::NODE_PATH;
+  debug_print_rich(vformat(
+    COLOR_GREEN("NORMALIZED VALUE [%s = %s] (%s(%s)/%s(%s))"), 
+    pi.name, use_quotes? (Variant)vformat("\"%s\"", out) : out, Variant::get_type_name(pi.type), pi.type, "property_hint_lookup()[pi.hint]", pi.hint)
+  );
+
+  return out;
 }
 
 static bool find_root_dpi(const Object *p_object, Ref<DynamicPropertyInfo> *r_dpi = nullptr, StringName *r_dpi_name = nullptr) {
@@ -542,12 +797,9 @@ static size_t find_inspector_editor_properties(const String &p_property_name, Ty
     return r_ed_props.size();
   }
 
-  if (p_root_node->is_class(EditorProperty::get_class_static())) {
-    EditorProperty *likely_target = Object::cast_to<EditorProperty>(p_root_node);
-
-    if (likely_target != nullptr && likely_target->get_edited_property() == p_property_name) {
-      r_ed_props.push_back(likely_target);
-    }
+  EditorProperty *likely_target = Object::cast_to<EditorProperty>(p_root_node);
+  if (likely_target != nullptr && likely_target->get_edited_property() == p_property_name) {
+    r_ed_props.push_back(likely_target);
   } else {
     TypedArray<Node> children =  p_root_node->get_children();
 
@@ -575,20 +827,24 @@ void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object
       return;
     }
 
+    /** @todo hint_string translator */
+
     PropertyInfo root_pi = root_dpi->get_property_info();
     String property = root_dpi->get_property_select();
+
+    // root_pi.hint_string = normalize_hint_string(root_pi.hint_string);
 
     if (root_dpi->type != previous->type || root_dpi->hint != previous->hint) {
       Variant new_value = normalize_value(root_pi);
       p_object->set(property, new_value);
     } 
     else if (root_dpi->hint_string != previous->hint_string) {
-      Variant new_value = normalize_value(root_pi, p_object->get(property));
+      Variant new_value = normalize_value(root_pi, p_object);
       p_object->set(property, new_value);
     }
   }
 
-  p_object->call_deferred("notify_property_list_changed");
+  p_object->notify_property_list_changed();
 }
 
 void DynamicPropertyInfoInspectorPlugin::_on_submit() {
@@ -715,12 +971,20 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
   
   creating_native_editor() = true;
 
+  /** 
+    @note For some reason this editor doesn't handle Type String + Hint PROPERTY_HINT_FILE + Hint string "*.png" (or any other extension) correctly.
+          Pop-up file selector window does not use the hint_string to filter files, it shows "All files" unlike a native godot property like:
+
+            @export_custom(PROPERTY_HINT_FILE, "*.png") var file : String
+
+          Same goes for PROPERTY_HINT_RESOURCE_TYPE and it's hint_string
+  */
   EditorProperty *editor = EditorInspector::instantiate_property_editor(
     p_object,
     target_dpi->get_type(), 
     p_name, 
     static_cast<PropertyHint>(target_dpi->get_hint()),
-    target_dpi->get_hint_string(),
+    target_dpi->get_hint_string() /** normalize_hint_string(target_dpi->get_hint_string()) */,
     target_dpi->get_usage(),
     p_wide
   );
@@ -735,6 +999,11 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
 
 void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
   if (p_object == nullptr) {
+    return;
+  }
+
+  if (creating_native_editor()) {
+    debug_print_rich(vformat("NATIVE PARSE END >>> %s", p_object), false);
     return;
   }
 
@@ -758,7 +1027,7 @@ void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
         button_target_node = Object::cast_to<HBoxContainer>(likely_target_node);
       }
     }
-
+    // PROPERTY_HINT_NONE
     if (button_target_node == nullptr) {
       button_target_node = memnew(HBoxContainer);
       root_dpi_inspector_node->add_child(button_target_node);
@@ -788,50 +1057,3 @@ void DynamicPropertyInfoEditorPlugin::_exit_tree() {
     inspector_plugin.unref();
   }
 }
-
-// bool FooInspectorPlugin::_can_handle(Object *p_object) const {
-//   if (p_object == nullptr) {
-//     return false;
-//   }
-
-//   if (creating_native_editor()) {
-//     return false;
-//   }
-
-//   debug_print_rich(vformat("FOO CAN HANDLE >>> %s", p_object));
-
-//   if (p_object->is_class(DynamicPropertyInfo::get_class_static())) {
-//     return false;
-//   }
-
-//   return find_root_dpi(p_object);
-// }
-
-// void FooInspectorPlugin::_parse_begin(Object* p_object) {
-//   print_line("FOO PARSE BEGIN >>> ", p_object);
-// };
-
-// bool FooInspectorPlugin::_parse_property(Object *p_object, Variant::Type p_type, const String &p_name, PropertyHint p_hint, const String &p_hint_string, BitField<PropertyUsageFlags> p_usage, bool p_wide) {
-//   if (not p_name.begins_with("d_")) {
-//     return false;
-//   }
-
-//   if (p_object == nullptr) {
-//     return false;
-//   }
-
-//   Ref<Resource> prop = p_object->get(p_name);
-//   if (prop.is_valid() && prop->is_class(DynamicPropertyInfo::get_class_static())) {
-//     return false;
-//   }
-
-//   print_line("FOO PARSE PROPERTY >>> ", p_name);
-//   creating_native_editor() = true;
-
-//   return false;
-// }
-
-// void FooInspectorPlugin::_parse_end(Object* p_object) {
-//   debug_print_rich(vformat(COLOR_GREEN("%s - FooInspector updated"), p_object));
-//   creating_native_editor() = false;
-// }
