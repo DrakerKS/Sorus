@@ -20,7 +20,7 @@ using namespace godot;
 
 #pragma region HelperFunctions
 
-static String normalize_hint_string(const String &p_hint_string) {
+static String normalize_hint_string(const String &p_hint_string, bool is_main_call = true) {
   String out {};
 
   if (p_hint_string.is_empty()) {
@@ -34,9 +34,9 @@ static String normalize_hint_string(const String &p_hint_string) {
 
   int key_value_separator = p_hint_string.find(";");
   if (key_value_separator >= 0) {
-    out += normalize_hint_string(p_hint_string.substr(0,key_value_separator));
+    out += normalize_hint_string(p_hint_string.substr(0,key_value_separator), false);
     out += ";";
-    out += normalize_hint_string(p_hint_string.substr(key_value_separator + 1));
+    out += normalize_hint_string(p_hint_string.substr(key_value_separator + 1), false);
 
     goto PRINT_AND_RET;
   }
@@ -50,8 +50,11 @@ static String normalize_hint_string(const String &p_hint_string) {
 
       if (hint_as_string.is_valid_int()) {
         hint = (PropertyHint)hint_as_string.to_int();
-      } else if (property_hint_names_map().has(hint_as_string.to_snake_case().to_upper())) {
-        hint = property_hint_names_map().get(hint_as_string);
+      } else {
+        hint_as_string = hint_as_string.to_snake_case().to_upper();
+        if (property_hint_names_map().has(hint_as_string)) {
+          hint = property_hint_names_map().get(hint_as_string);
+        }
       }
 
       type_string = type_string.substr(0, hint_slash);
@@ -60,10 +63,13 @@ static String normalize_hint_string(const String &p_hint_string) {
     if (type_string.is_valid_int()) {
       type = (Variant::Type) type_string.to_int();
     } else {
-      type = variant_type_names_map().get(type_string.to_snake_case().to_upper());
+      type_string = type_string.to_snake_case().to_upper();
+      if (variant_type_names_map().has(type_string)) {
+        type = variant_type_names_map().get(type_string);
+      }
     }
 
-    hint_string = normalize_hint_string(p_hint_string.substr(hint_type_separator + 1));
+    hint_string = normalize_hint_string(p_hint_string.substr(hint_type_separator + 1), false);
   } else {
     type = Variant::get_type_by_name(p_hint_string);
 
@@ -76,7 +82,10 @@ static String normalize_hint_string(const String &p_hint_string) {
   out += String::num_int64(type) + String("/") + String::num_int64(hint) + String(":") + hint_string;
 
   PRINT_AND_RET:
-    debug_print_rich(vformat(COLOR_GREEN("Hint string normalized from '%s' to '%s'"), p_hint_string, out));
+    if (is_main_call) {
+      debug_print_rich(vformat(COLOR_GREEN("Hint string normalized from '%s' to '%s'"), p_hint_string, out));
+    }
+    
     return out;
 }
 
