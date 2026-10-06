@@ -43,7 +43,6 @@ namespace godot {
       SORUS_DECL(uint32_t, usage, PROPERTY_USAGE_DEFAULT);
       SORUS_DECL(Dictionary, property_info_dict); /*<[StringName, Ref<DynamicPropertyInfo>]>*/
       SORUS_DECL(int, values_name_type, DEFAULT_NAME_TYPE);
-      // SORUS_DECL_STATIC(int, values_name_type);
 
       String get_property_names_hint_string () const;
 

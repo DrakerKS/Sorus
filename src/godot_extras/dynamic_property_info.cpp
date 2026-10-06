@@ -20,59 +20,64 @@ using namespace godot;
 
 #pragma region HelperFunctions
 
-static const Variant *get_default_variant_values() {
-  struct DefaultVariantValues{
-    Variant values[Variant::Type::VARIANT_MAX];
+static String normalize_hint_string(const String &p_hint_string) {
+  String out {};
 
-    DefaultVariantValues () {
-      values[Variant::Type::NIL] = Variant();
+  if (p_hint_string.is_empty()) {
+    return out;
+  }
 
-      values[Variant::Type::BOOL] = false;
-      values[Variant::Type::INT] = 0;
-      values[Variant::Type::FLOAT] = 0.0f;
-      values[Variant::Type::STRING] = String();
+  Variant::Type type {};
+  PropertyHint hint {};
+  String hint_string {};
+  int hint_type_separator = p_hint_string.find(":");
 
-      values[Variant::Type::VECTOR2] = Vector2();
-      values[Variant::Type::VECTOR2I] = Vector2i();
-      values[Variant::Type::RECT2] = Rect2();
-      values[Variant::Type::RECT2I] = Rect2i();
-      values[Variant::Type::VECTOR3] = Vector3();
-      values[Variant::Type::VECTOR3I] = Vector3i();
-      values[Variant::Type::TRANSFORM2D] = Transform2D();
-      values[Variant::Type::VECTOR4] = Vector4();
-      values[Variant::Type::VECTOR4I] = Vector4i();
-      values[Variant::Type::PLANE] = Plane();
-      values[Variant::Type::QUATERNION] = Quaternion();
-      values[Variant::Type::AABB] = AABB();
-      values[Variant::Type::BASIS] = Basis();
-      values[Variant::Type::TRANSFORM3D] = Transform3D();
-      values[Variant::Type::PROJECTION] = Projection();
+  int key_value_separator = p_hint_string.find(";");
+  if (key_value_separator >= 0) {
+    out += normalize_hint_string(p_hint_string.substr(0,key_value_separator));
+    out += ";";
+    out += normalize_hint_string(p_hint_string.substr(key_value_separator + 1));
 
-      values[Variant::Type::COLOR] = Color();
-      values[Variant::Type::STRING_NAME] = StringName();
-      values[Variant::Type::NODE_PATH] = NodePath();
-      values[Variant::Type::RID] = RID();
-      values[Variant::Type::OBJECT] = Variant();
-      values[Variant::Type::CALLABLE] = Callable();
-      values[Variant::Type::SIGNAL] = Signal();
-      values[Variant::Type::DICTIONARY] = Dictionary();
-      values[Variant::Type::ARRAY] = Array();
+    goto PRINT_AND_RET;
+  }
 
-      values[Variant::Type::PACKED_BYTE_ARRAY] = PackedByteArray();
-      values[Variant::Type::PACKED_INT32_ARRAY] = PackedInt32Array();
-      values[Variant::Type::PACKED_INT64_ARRAY] = PackedInt64Array();
-      values[Variant::Type::PACKED_FLOAT32_ARRAY] = PackedFloat32Array();
-      values[Variant::Type::PACKED_FLOAT64_ARRAY] = PackedFloat64Array();
-      values[Variant::Type::PACKED_STRING_ARRAY] = PackedStringArray();
-      values[Variant::Type::PACKED_VECTOR2_ARRAY] = PackedVector2Array();
-      values[Variant::Type::PACKED_VECTOR3_ARRAY] = PackedVector3Array();
-      values[Variant::Type::PACKED_COLOR_ARRAY] = PackedColorArray();
-      values[Variant::Type::PACKED_VECTOR4_ARRAY] = PackedVector4Array();
+  if (hint_type_separator >= 0) {
+    String type_string = p_hint_string.substr(0, hint_type_separator);
+    
+    int hint_slash = type_string.find("/");
+    if (hint_slash >= 0) {
+      String hint_as_string = type_string.substr(hint_slash + 1);
+
+      if (hint_as_string.is_valid_int()) {
+        hint = (PropertyHint)hint_as_string.to_int();
+      } else if (property_hint_names_map().has(hint_as_string.to_snake_case().to_upper())) {
+        hint = property_hint_names_map().get(hint_as_string);
+      }
+
+      type_string = type_string.substr(0, hint_slash);
     }
-  };
-	
-  static struct DefaultVariantValues default_variant_values;
-	return default_variant_values.values;
+
+    if (type_string.is_valid_int()) {
+      type = (Variant::Type) type_string.to_int();
+    } else {
+      type = variant_type_names_map().get(type_string.to_snake_case().to_upper());
+    }
+
+    hint_string = normalize_hint_string(p_hint_string.substr(hint_type_separator + 1));
+  } else {
+    type = Variant::get_type_by_name(p_hint_string);
+
+    if (type == Variant::VARIANT_MAX) {
+      out = p_hint_string;
+      goto PRINT_AND_RET;
+    }
+  }
+
+  out += String::num_int64(type) + String("/") + String::num_int64(hint) + String(":") + hint_string;
+
+  PRINT_AND_RET:
+    debug_print_rich(vformat(COLOR_GREEN("Hint string normalized from '%s' to '%s'"), p_hint_string, out));
+    return out;
 }
 
 static Variant normalize_value(const PropertyInfo &p_property_info, const Object* p_object = nullptr, const Variant &p_value = Variant());
@@ -365,10 +370,6 @@ static Variant normalize_array_type(const PropertyInfo &p_property_info, const O
 
     subtype_hint_string = p_property_info.hint_string.substr(hint_subtype_separator + 1);
     subtype = Variant::Type(subtype_string.to_int());
-
-    print_line("FLAG >>> ", subtype);
-    print_line("FLAG >>> ", subtype_hint);
-    print_line("FLAG >>> ", subtype_hint_string);
   } else {
     subtype = Variant::get_type_by_name(p_property_info.hint_string);
   
@@ -515,7 +516,7 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
   }
 
   if (out == Variant()) {
-    out = get_default_variant_values()[pi.type];
+    out = get_variant_default_value(pi.type);
   }
 
   bool use_quotes = pi.type == Variant::STRING || pi.type == Variant::STRING_NAME || pi.type == Variant::NODE_PATH;
@@ -581,7 +582,7 @@ static size_t find_inspector_editor_properties(const String &p_property_name, Ty
   return r_ed_props.size();
 }
 
-#pragma endregion
+#pragma endregion HelperFunctions
 
 #pragma region DynamicPropertyInfo
 
@@ -746,7 +747,8 @@ String DynamicPropertyInfo::get_property_names_hint_string() const {
   return out;
 }
 
-  #pragma region
+  
+  #pragma region ::Setters & Getters
     #define DPI_SETTER(m_type, m_member) \
       void DynamicPropertyInfo::SORUS_SETTER_TOKEN(m_member)(m_type P_TOKEN(m_member)) { \
         if (m_member == P_TOKEN(m_member)) \
@@ -826,7 +828,7 @@ String DynamicPropertyInfo::get_property_names_hint_string() const {
     #undef DPI_GETTER
   #pragma endregion
 
-#pragma endregion 
+#pragma endregion DynamicPropertyInfo
 
 #pragma region DPInfoInspectorPlugin
 
@@ -846,7 +848,8 @@ void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object
     PropertyInfo root_pi = root_dpi->get_property_info();
     String property = root_dpi->get_property_select();
 
-    // root_pi.hint_string = normalize_hint_string(root_pi.hint_string);
+    // normalize_hint_string(root_pi.hint_string);
+    root_pi.hint_string = normalize_hint_string(root_pi.hint_string);
 
     if (root_dpi->type != previous->type || root_dpi->hint != previous->hint) {
       Variant new_value = normalize_value(root_pi);
@@ -984,21 +987,13 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
   );
   
   creating_native_editor() = true;
-
-  /** 
-    @note For some reason this editor doesn't handle Type String + Hint PROPERTY_HINT_FILE + Hint string "*.png" (or any other extension) correctly.
-          Pop-up file selector window does not use the hint_string to filter files, it shows "All files" unlike a native godot property like:
-
-            @export_custom(PROPERTY_HINT_FILE, "*.png") var file : String
-
-          Same goes for PROPERTY_HINT_RESOURCE_TYPE and it's hint_string
-  */
+  
   EditorProperty *editor = EditorInspector::instantiate_property_editor(
     p_object,
     target_dpi->get_type(), 
     p_name, 
     static_cast<PropertyHint>(target_dpi->get_hint()),
-    target_dpi->get_hint_string() /** normalize_hint_string(target_dpi->get_hint_string()) */,
+    normalize_hint_string(target_dpi->get_hint_string()),
     target_dpi->get_usage(),
     p_wide
   );
@@ -1054,25 +1049,9 @@ void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
   }
 
   debug_print_rich(vformat(COLOR_GREEN("%s - Inspector updated by %s"), p_object, this->get_class_static()));
-
-  // variant_type_names_map().show_entries();
-  // print_line("-------------------------");
-  // print_line(get_variant_type_hint_string(VALUE_NAME_PASCAL));
-  // print_line("-------------------------");
-
-  // property_hint_names_map().show_entries();
-  // print_line("-------------------------");
-  // print_line(get_property_hint_hint_string(VALUE_NAME_PASCAL));
-  // print_line("-------------------------");
-
-  // property_usage_names_map().show_entries();
-  // print_line("-------------------------");
-  // print_line(get_property_usage_flags_hint_string(VALUE_NAME_PASCAL));
-  // print_line("-------------------------");
-
 }
 
-#pragma endregion
+#pragma endregion DPInfoInspectorPlugin
 
 #pragma region DPInfoEditorPlugin
 
@@ -1088,4 +1067,4 @@ void DynamicPropertyInfoEditorPlugin::_exit_tree() {
   }
 }
 
-#pragma endregion
+#pragma endregion DPInfoEditorPlugin
