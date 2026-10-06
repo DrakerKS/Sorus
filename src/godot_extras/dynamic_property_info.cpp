@@ -1,5 +1,4 @@
 #include "dynamic_property_info.hpp"
-#include "godot_extras/globals.hpp"
 
 #include "godot_cpp/classes/node.hpp"
 #include "godot_cpp/classes/button.hpp"
@@ -16,244 +15,10 @@
 #include "utils/macros.hpp"
 #include "utils/error_macros.hpp"
 #include "utils/debug.hpp"
-#include <type_traits>
 
 using namespace godot;
 
-struct PropertyUsageEntry {
-  PropertyUsageFlags usage;
-  const char *name;
-};
-
-static constexpr PropertyUsageEntry property_usage_flags[] = {
-  { PROPERTY_USAGE_DEFAULT, "Default" },
-  { PROPERTY_USAGE_STORAGE, "Storage" },
-  { PROPERTY_USAGE_EDITOR, "Editor" },
-  { PROPERTY_USAGE_INTERNAL, "Internal" },
-  { PROPERTY_USAGE_CHECKABLE, "Checkable" },
-  { PROPERTY_USAGE_CHECKED, "Checked" },
-  { PROPERTY_USAGE_GROUP, "Group" },
-  { PROPERTY_USAGE_CATEGORY, "Category" },
-  { PROPERTY_USAGE_SUBGROUP, "Subgroup" },
-  { PROPERTY_USAGE_CLASS_IS_BITFIELD, "ClassIsBitfield" },
-  { PROPERTY_USAGE_NO_INSTANCE_STATE, "NoInstanceState" },
-  { PROPERTY_USAGE_RESTART_IF_CHANGED, "RestartIfChanged" },
-  { PROPERTY_USAGE_SCRIPT_VARIABLE, "ScriptVariable" },
-  { PROPERTY_USAGE_STORE_IF_NULL, "StoreIfNull" },
-  { PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED, "UpdateAllIfModified" },
-  { PROPERTY_USAGE_SCRIPT_DEFAULT_VALUE, "ScriptDefaultValue" },
-  { PROPERTY_USAGE_CLASS_IS_ENUM, "ClassIsEnum" },
-  { PROPERTY_USAGE_NIL_IS_VARIANT, "NilIsVariant" },
-  { PROPERTY_USAGE_ARRAY, "Array" },
-  { PROPERTY_USAGE_ALWAYS_DUPLICATE, "AlwaysDuplicate" },
-  { PROPERTY_USAGE_NEVER_DUPLICATE, "NeverDuplicate" },
-  { PROPERTY_USAGE_HIGH_END_GFX, "HighEndGfx" },
-  { PROPERTY_USAGE_NODE_PATH_FROM_SCENE_ROOT, "NodePathFromSceneRoot" },
-  { PROPERTY_USAGE_RESOURCE_NOT_PERSISTENT, "ResourceNotPersistent" },
-  { PROPERTY_USAGE_KEYING_INCREMENTS, "KeyingIncrements" },
-  { PROPERTY_USAGE_DEFERRED_SET_RESOURCE, "DeferredSetResource" },
-  { PROPERTY_USAGE_EDITOR_INSTANTIATE_OBJECT, "EditorInstantiateObject" },
-  { PROPERTY_USAGE_EDITOR_BASIC_SETTING, "EditorBasicSetting" },
-  { PROPERTY_USAGE_READ_ONLY, "ReadOnly" },
-  { PROPERTY_USAGE_SECRET, "Secret" },
-};
-
-// +-----------------------------------------------------------------------------------------+
-// |================================= DYNAMIC_PROPERTY_INFO =================================|
-// +-----------------------------------------------------------------------------------------+
-
-static String get_variant_type_hint_string() {
-  static String result = "";
-
-  if (result.is_empty()) {
-    for (int i = 0; i < Variant::VARIANT_MAX; i++) {
-      if (i > 0) {
-        result += ",";
-      }
-
-      result += Variant::get_type_name(static_cast<Variant::Type>(i));
-      Variant::get_type_by_name("INT");
-    }
-  }
-
-  return result;
-}
-
-static String get_property_hint_hint_string() {
-  static String hint_string {};
-  if (not hint_string.is_empty()) {
-    return hint_string;
-  }
-
-  Vector<NamedValue<PropertyHint>> entries = property_hint_named_values();
-  // for (const NamedValue<PropertyHint> &entry : entries) {
-  //   if (not hint_string.is_empty()) {
-  //     hint_string += ",";
-  //   }
-
-  //   String name = entry.second;
-
-  //   hint_string += name;
-  //   hint_string += ":";
-  //   hint_string += String::num_int64(entry.first);
-  // }
-
-  return hint_string;
-}
-
-static String get_property_usage_flags_hint_string() {
-  static String result {};
-
-  if (result.is_empty()) {
-    for (auto &entry : property_usage_flags) {
-      if (not result.is_empty()) {
-        result += ",";
-      }
-
-      result += entry.name;
-      result += ":";
-      result += String::num_uint64(entry.usage);
-    }
-  }
-
-  return result;
-}
-
-void DynamicPropertyInfo::_bind_methods() {
-  SORUS_BIND_PROPERTY_ENUM_STRING(property_select, PLACEHOLDER_PROPERTY_SELECT);
-  SORUS_BIND_PROPERTY_ENUM(type, get_variant_type_hint_string());
-  SORUS_BIND_PROPERTY_ENUM(hint,get_property_hint_hint_string());
-
-  // SORUS_BIND_PROPERTY_STRING(hint_string);
-  SORUS_BIND_PROPERTY_MULTILINE_TEXT(hint_string);
-
-  ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Usage bitfield", member_usage);
-  SORUS_BIND_PROPERTY_FLAGS(usage, get_property_usage_flags_hint_string());
-
-  ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Properties", member_property_info_dict);
-  SORUS_BIND_PROPERTY_DICTIONARY(
-    property_info_dict,
-    vformat(
-      "%d:;%d/%d:%s", 
-      Variant::Type::STRING_NAME,
-      Variant::Type::OBJECT,
-      PROPERTY_HINT_RESOURCE_TYPE,
-      DynamicPropertyInfo::get_class_static()
-    ),
-    PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_READ_ONLY
-  );
-}
-
-void DynamicPropertyInfo::_validate_property(PropertyInfo &p_property) const {
-  if (not is_root) {
-    if (p_property.name == StringName{member_property_select} || p_property.name == StringName{SORUS_MEMBER_NAME(property_info_dict)}) {
-      p_property.usage = PROPERTY_USAGE_NONE;
-    }
-    return;
-  }
-
-  debug_print_rich(vformat("VALIDATE >>> %s[%s]", this, p_property.name), true);
-
-  if (p_property.name != StringName(member_property_select)) {
-    if (this->get_property_select() == StringName{PLACEHOLDER_PROPERTY_SELECT}) {
-      p_property.usage = p_property.usage | PROPERTY_USAGE_READ_ONLY;
-    }
-    return;
-  }
-
-  String hint_string = get_property_names_hint_string();
-  p_property.hint_string = hint_string;
-}
-
-String DynamicPropertyInfo::_to_string() const {
-  return vformat("%s<%s#%s>", 
-    this->get_class_static(), 
-    this->get_parent_class_static(), 
-    String::num_uint64(get_instance_id())
-  );
-}
-
-void DynamicPropertyInfo::set_property_info_dict(Dictionary p_property_info_dict) {
-  property_info_dict = p_property_info_dict;
-}
-
-Dictionary DynamicPropertyInfo::get_property_info_dict() const {
-  return property_info_dict;
-}
-
-String DynamicPropertyInfo::get_property_names_hint_string() const {
-  Array keys = property_info_dict.keys();
-  String out {};
-
-  for (int i = 0; i < keys.size(); i++) {
-    if (not out.is_empty()) {
-      out += ",";
-    }
-
-    out += (StringName)keys[i];
-  }
-
-  return out;
-}
-
-#define DPI_SETTER(m_type, m_member) \
-  void DynamicPropertyInfo::SORUS_SETTER_TOKEN(m_member)(m_type P_TOKEN(m_member)) { \
-    if (m_member == P_TOKEN(m_member)) \
-      return; \
-    m_member = P_TOKEN(m_member); \
-  } END_MACRO()
-
-#define DPI_GETTER(m_type, m_member) \
-  m_type DynamicPropertyInfo::SORUS_GETTER_TOKEN(m_member)() const { \
-    return static_cast<m_type>(m_member); \
-  } END_MACRO()
-
-    DPI_SETTER(Variant::Type, type);
-    DPI_GETTER(Variant::Type, type);
-
-    void DynamicPropertyInfo::set_property_select(StringName p_property_select) {
-      if (property_select == p_property_select) {
-        return;
-      }
-      property_select = p_property_select;
-
-      Ref<DynamicPropertyInfo> serialized_dpi = 
-        property_info_dict.get(
-          p_property_select, 
-          nullptr
-        );
-
-      if (serialized_dpi.is_valid()) {
-        type = serialized_dpi->get_type();
-        hint = serialized_dpi->get_hint();
-        hint_string = serialized_dpi->get_hint_string();
-        usage = serialized_dpi->get_usage();
-      }
-
-      if (is_root) {
-        this->emit_changed();
-      }
-    }
-
-    StringName DynamicPropertyInfo::get_property_select() const {
-      return property_select;
-    }
-
-    DPI_SETTER(uint32_t, hint);
-    DPI_GETTER(uint32_t, hint);
-
-    DPI_SETTER(String, hint_string);
-    DPI_GETTER(String, hint_string);
-
-    DPI_SETTER(uint32_t, usage);
-    DPI_GETTER(uint32_t, usage);
-
-#undef DPI_SETTER
-#undef DPI_GETTER
-
-// +----------------------------------------------------------------------------------------+
-// |======================== DYNAMIC_PROPERTY_INFO_INSPECTOR_PLUGIN ========================|
-// +----------------------------------------------------------------------------------------+
+#pragma region HelperFunctions
 
 static const Variant *get_default_variant_values() {
   struct DefaultVariantValues{
@@ -816,6 +581,255 @@ static size_t find_inspector_editor_properties(const String &p_property_name, Ty
   return r_ed_props.size();
 }
 
+#pragma endregion
+
+#pragma region DynamicPropertyInfo
+
+static String get_variant_type_hint_string(ValueNameType p_name_type) {
+  String hint_string {};
+
+  for (const auto &entry : variant_type_names_map().get_entries()) {
+    if (not hint_string.is_empty()) {
+      hint_string += ",";
+    }
+
+    hint_string += entry.second[p_name_type];
+    hint_string += ":";
+    hint_string += String::num_int64(entry.first);
+  }
+
+  return hint_string;
+}
+
+static String get_property_hint_hint_string(ValueNameType p_name_type) {
+  String hint_string {};
+  
+  for (const auto &entry : property_hint_names_map().get_entries()) {
+    if (not hint_string.is_empty()) {
+      hint_string += ",";
+    }
+
+    hint_string += entry.second[p_name_type];
+    hint_string += ":";
+    hint_string += String::num_int64(entry.first);
+  }
+
+  return hint_string;
+}
+
+static String get_property_usage_flags_hint_string(ValueNameType p_name_type) {
+  String hint_string {};
+
+  for (const auto &entry : property_usage_names_map().get_entries()) {
+    if (property_usage_names_map().get(entry.second[p_name_type]) == PROPERTY_USAGE_DEFAULT) {
+      continue;
+    }
+
+    if (not hint_string.is_empty()) {
+      hint_string += ",";
+    }
+
+    hint_string += entry.second[p_name_type];
+    hint_string += ":";
+    hint_string += String::num_int64(entry.first);
+  }
+
+  return hint_string;
+}
+
+static const String& get_values_name_type_hint_string() {
+  static String hint_string {};
+
+  for (int type = 0; type < VALUE_NAME_MAX ; type++) {
+    if (not hint_string.is_empty()) {
+      hint_string += ",";
+    }
+
+    hint_string += String(::to_string((ValueNameType)type)).to_pascal_case();
+  }
+
+  return hint_string;
+}
+
+void DynamicPropertyInfo::_bind_methods() {
+  SORUS_BIND_PROPERTY_ENUM_STRING(property_select, PLACEHOLDER_PROPERTY_SELECT);
+  SORUS_BIND_PROPERTY_ENUM(type, get_variant_type_hint_string(DEFAULT_NAME_TYPE));
+  SORUS_BIND_PROPERTY_ENUM(hint,get_property_hint_hint_string(DEFAULT_NAME_TYPE));
+  SORUS_BIND_PROPERTY_MULTILINE_TEXT(hint_string);
+
+  ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Usage bitfield", "");
+  SORUS_BIND_PROPERTY_FLAGS(usage, get_property_usage_flags_hint_string(DEFAULT_NAME_TYPE));
+
+  ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Properties", "");
+  SORUS_BIND_PROPERTY_DICTIONARY(
+    property_info_dict,
+    vformat(
+      "%d:;%d/%d:%s", 
+      Variant::Type::STRING_NAME,
+      Variant::Type::OBJECT,
+      PROPERTY_HINT_RESOURCE_TYPE,
+      DynamicPropertyInfo::get_class_static()
+    ),
+    PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_READ_ONLY
+  );
+
+  ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Settings", "");
+  SORUS_BIND_PROPERTY_ENUM(
+    values_name_type,
+    get_values_name_type_hint_string()
+  );
+}
+
+void DynamicPropertyInfo::_validate_property(PropertyInfo &p_property) const {
+  StringName name = p_property.name;
+
+  if (is_root) {
+    debug_print_rich(vformat("VALIDATE >>> %s[%s]", this, p_property.name), true);
+  }
+
+  if (name == StringName{member_type}) {
+    p_property.hint_string = get_variant_type_hint_string((ValueNameType)values_name_type);
+  } else if (name == StringName{member_hint}) {
+    p_property.hint_string = get_property_hint_hint_string((ValueNameType)values_name_type);
+  } else if (name == StringName{member_usage}) {
+    p_property.hint_string = get_property_usage_flags_hint_string((ValueNameType)values_name_type);
+  }
+
+  if (not is_root) {
+    if (name == StringName{member_property_select} || name == StringName{member_property_info_dict} || name == StringName{member_values_name_type}) {
+      p_property.usage = PROPERTY_USAGE_NONE;
+    } else {
+      p_property.usage |= PROPERTY_USAGE_READ_ONLY;
+    }
+    return;
+  }
+
+  if (name != StringName(member_property_select)) {
+    if (this->get_property_select() == StringName{PLACEHOLDER_PROPERTY_SELECT}) {
+      p_property.usage = p_property.usage | PROPERTY_USAGE_READ_ONLY;
+    }
+
+    return;
+  }
+
+  p_property.hint_string = get_property_names_hint_string();
+}
+
+String DynamicPropertyInfo::_to_string() const {
+  return vformat("%s<%s#%s>", 
+    this->get_class_static(), 
+    this->get_parent_class_static(), 
+    String::num_uint64(get_instance_id())
+  );
+}
+
+void DynamicPropertyInfo::set_property_info_dict(Dictionary p_property_info_dict) {
+  property_info_dict = p_property_info_dict;
+}
+
+Dictionary DynamicPropertyInfo::get_property_info_dict() const {
+  return property_info_dict;
+}
+
+String DynamicPropertyInfo::get_property_names_hint_string() const {
+  Array keys = property_info_dict.keys();
+  String out {};
+
+  for (int i = 0; i < keys.size(); i++) {
+    if (not out.is_empty()) {
+      out += ",";
+    }
+
+    out += (StringName)keys[i];
+  }
+
+  return out;
+}
+
+  #pragma region
+    #define DPI_SETTER(m_type, m_member) \
+      void DynamicPropertyInfo::SORUS_SETTER_TOKEN(m_member)(m_type P_TOKEN(m_member)) { \
+        if (m_member == P_TOKEN(m_member)) \
+          return; \
+        m_member = P_TOKEN(m_member); \
+      } END_MACRO()
+
+    #define DPI_GETTER(m_type, m_member) \
+      m_type DynamicPropertyInfo::SORUS_GETTER_TOKEN(m_member)() const { \
+        return static_cast<m_type>(m_member); \
+      } END_MACRO()
+
+      DPI_SETTER(Variant::Type, type);
+      DPI_GETTER(Variant::Type, type);
+
+      void DynamicPropertyInfo::set_property_select(StringName p_property_select) {
+        if (property_select == p_property_select) {
+          return;
+        }
+        property_select = p_property_select;
+
+        Ref<DynamicPropertyInfo> serialized_dpi = 
+          property_info_dict.get(
+            p_property_select, 
+            nullptr
+          );
+
+        if (serialized_dpi.is_valid()) {
+          type = serialized_dpi->get_type();
+          hint = serialized_dpi->get_hint();
+          hint_string = serialized_dpi->get_hint_string();
+          usage = serialized_dpi->get_usage();
+        }
+
+        if (is_root) {
+          this->emit_changed();
+        }
+      }
+
+      StringName DynamicPropertyInfo::get_property_select() const {
+        return property_select;
+      }
+
+      DPI_SETTER(uint32_t, hint);
+      DPI_GETTER(uint32_t, hint);
+
+      DPI_SETTER(String, hint_string);
+      DPI_GETTER(String, hint_string);
+
+      DPI_SETTER(uint32_t, usage);
+      DPI_GETTER(uint32_t, usage);
+
+      void DynamicPropertyInfo::set_values_name_type(int p_name_type) {
+        if (values_name_type == p_name_type) {
+          return;
+        }
+
+        ERR_FAIL_INDEX(p_name_type, VALUE_NAME_MAX);
+        
+        values_name_type = p_name_type;
+        notify_property_list_changed();
+
+        for (const auto &key : property_info_dict.keys()) {
+          Ref<DynamicPropertyInfo> inner_dpi = property_info_dict[key];
+
+          inner_dpi->values_name_type = values_name_type;
+          inner_dpi->notify_property_list_changed();
+        }
+      }
+
+      int DynamicPropertyInfo::get_values_name_type() const {
+        ERR_FAIL_INDEX_V(values_name_type, VALUE_NAME_MAX, values_name_type);
+        return values_name_type;
+      }
+
+    #undef DPI_SETTER
+    #undef DPI_GETTER
+  #pragma endregion
+
+#pragma endregion 
+
+#pragma region DPInfoInspectorPlugin
+
 void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object *p_object, const Ref<DynamicPropertyInfo> &root_dpi) {
   if (p_object == nullptr) {
     return;
@@ -1039,12 +1053,28 @@ void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
     button_target_node->add_child(submit_button);
   }
 
-  debug_print_rich(vformat(COLOR_GREEN("%s - Inspector updated"), p_object));
+  debug_print_rich(vformat(COLOR_GREEN("%s - Inspector updated by %s"), p_object, this->get_class_static()));
+
+  // variant_type_names_map().show_entries();
+  // print_line("-------------------------");
+  // print_line(get_variant_type_hint_string(VALUE_NAME_PASCAL));
+  // print_line("-------------------------");
+
+  // property_hint_names_map().show_entries();
+  // print_line("-------------------------");
+  // print_line(get_property_hint_hint_string(VALUE_NAME_PASCAL));
+  // print_line("-------------------------");
+
+  // property_usage_names_map().show_entries();
+  // print_line("-------------------------");
+  // print_line(get_property_usage_flags_hint_string(VALUE_NAME_PASCAL));
+  // print_line("-------------------------");
+
 }
 
-// +-----------------------------------------------------------------------------------------+
-// |========================== DYNAMIC_PROPERTY_INFO_EDITOR_PLUGIN ==========================|
-// +-----------------------------------------------------------------------------------------+
+#pragma endregion
+
+#pragma region DPInfoEditorPlugin
 
 void DynamicPropertyInfoEditorPlugin::_enter_tree() {
   inspector_plugin.instantiate();
@@ -1057,3 +1087,5 @@ void DynamicPropertyInfoEditorPlugin::_exit_tree() {
     inspector_plugin.unref();
   }
 }
+
+#pragma endregion

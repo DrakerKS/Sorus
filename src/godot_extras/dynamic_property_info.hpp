@@ -1,5 +1,7 @@
 #pragma once
 
+#include "godot_extras/globals.hpp"
+
 #include "godot_cpp/core/property_info.hpp"
 #include "godot_cpp/classes/resource.hpp"
 #include "godot_cpp/classes/wrapped.hpp"
@@ -30,15 +32,18 @@ namespace godot {
     friend class DynamicEditorProperty;
 
     private:
+      bool is_root = false;
+      static const constexpr ValueNameType DEFAULT_NAME_TYPE = VALUE_NAME_PASCAL;
+      static constexpr const char * PLACEHOLDER_PROPERTY_SELECT = "Select";
+
       SORUS_DECL(Variant::Type, type, Variant::NIL);
-      SORUS_DECL(StringName, property_select);
+      SORUS_DECL(StringName, property_select, PLACEHOLDER_PROPERTY_SELECT);
       SORUS_DECL(uint32_t, hint, PROPERTY_HINT_NONE);
       SORUS_DECL(String, hint_string);
       SORUS_DECL(uint32_t, usage, PROPERTY_USAGE_DEFAULT);
       SORUS_DECL(Dictionary, property_info_dict); /*<[StringName, Ref<DynamicPropertyInfo>]>*/
-
-      bool is_root = false;
-      static constexpr const char * PLACEHOLDER_PROPERTY_SELECT = "Select";
+      SORUS_DECL(int, values_name_type, DEFAULT_NAME_TYPE);
+      // SORUS_DECL_STATIC(int, values_name_type);
 
       String get_property_names_hint_string () const;
 
@@ -63,20 +68,16 @@ namespace godot {
         return property_info;
       }
 
-      DynamicPropertyInfo() {
-        property_select = PLACEHOLDER_PROPERTY_SELECT;
-      }
+      DynamicPropertyInfo(PropertyInfo p_property_info): 
+        type {p_property_info.type}, 
+        property_select {p_property_info.name}, 
+        hint {p_property_info.hint}, 
+        hint_string {p_property_info.hint_string}, 
+        usage {p_property_info.usage} {
+          
+        }
 
-      DynamicPropertyInfo(
-        PropertyInfo p_property_info
-      ) : type {p_property_info.type}, 
-          property_select {p_property_info.name}, 
-          hint {p_property_info.hint}, 
-          hint_string {p_property_info.hint_string}, 
-          usage {p_property_info.usage} {
-            /** nop */
-          }
-
+      DynamicPropertyInfo() = default;
       ~DynamicPropertyInfo() = default;
   };
 

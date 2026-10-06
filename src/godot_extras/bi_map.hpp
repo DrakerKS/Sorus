@@ -171,7 +171,6 @@ namespace godot {
         Entry target = entries[idx];
 
         if (idx != last_idx) {
-          entries.set(idx, entries[last_idx]);
           update_entry_index(last_idx, idx);
         }
 
@@ -321,7 +320,7 @@ namespace godot {
             const TValue &value = entry.second;
             entry_value += value;
           }
-          
+
           print_line(entry.first, ": ", entry_value);
         }
       }

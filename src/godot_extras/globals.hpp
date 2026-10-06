@@ -5,13 +5,28 @@
 namespace godot {
   template <typename T>
   using NamedValue = Pair<T, Vector<String>>;
+   
+  #define VALUE_NAME_TYPE_ENTRIES() \
+    VALUE_NAME_TYPE_ENTRY(VALUE_NAME_FULL, "FULL") \
+    VALUE_NAME_TYPE_ENTRY(VALUE_NAME_SHORT, "SHORT") \
+    VALUE_NAME_TYPE_ENTRY(VALUE_NAME_PASCAL, "PASCAL")
 
-  enum VALUE_NAME_TYPE {
-    VALUE_NAME_FULL,
-    VLAUE_NAME_SHORT,
-    VLAUE_NAME_PASCAL,
-    VLAUE_NAME_MAX
+  enum ValueNameType {
+    #define VALUE_NAME_TYPE_ENTRY(m_id, ...) m_id,
+      VALUE_NAME_TYPE_ENTRIES()
+    #undef VALUE_NAME_TYPE_ENTRY
+    VALUE_NAME_MAX
   };
+
+  inline constexpr const char *to_string(ValueNameType p_name_type) {
+    switch (p_name_type) {
+      #define VALUE_NAME_TYPE_ENTRY(m_id, m_short_name) case m_id: return m_short_name;
+        VALUE_NAME_TYPE_ENTRIES()
+      #undef VALUE_NAME_TYPE_ENTRY
+      default: return "Unknown";
+    }
+  }
+
 
   #define LOCAL_INSERT_NAMED(m_value_type, m_val, m_to, m_name, ...) \
     m_to.push_back(NamedValue<m_value_type>({m_val, {m_name __VA_OPT__(,) __VA_ARGS__}}))
