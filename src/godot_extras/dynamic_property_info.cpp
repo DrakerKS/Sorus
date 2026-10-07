@@ -76,7 +76,7 @@ static String normalize_hint_string(const PropertyInfo &p_property_info, bool is
     }
 
     if (type_string.is_valid_int()) {
-      uint type_as_int = type_string.to_int();
+      uint32_t type_as_int = type_string.to_int();
       if (type_as_int < Variant::VARIANT_MAX) {
         type = Variant::Type(type_as_int);
       }
