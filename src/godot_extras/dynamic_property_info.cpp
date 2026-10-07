@@ -5,6 +5,7 @@
 #include "godot_cpp/classes/editor_interface.hpp"
 #include "godot_cpp/classes/h_box_container.hpp"
 #include "godot_cpp/classes/resource_uid.hpp"
+#include "godot_cpp/classes/input_map.hpp"
 
 #include "godot_cpp/variant/callable_method_pointer.hpp"
 
@@ -20,23 +21,37 @@ using namespace godot;
 
 #pragma region HelperFunctions
 
-static String normalize_hint_string(const String &p_hint_string, bool is_main_call = true) {
-  String out {};
-
-  if (p_hint_string.is_empty()) {
-    return out;
+static String normalize_hint_string(const PropertyInfo &p_property_info, bool is_main_call = true) {
+  static HashSet<Variant::Type> type_whitelist {
+    Variant::ARRAY,
+    Variant::DICTIONARY
+  };
+  
+  if (not type_whitelist.has(p_property_info.type)) {
+    return p_property_info.hint_string;
   }
 
+  String p_hint_string = p_property_info.hint_string;
+  if (p_hint_string.is_empty()) {
+    return {};
+  }
+
+  String out {};
+
+  PropertyInfo pi {};
   Variant::Type type {};
   PropertyHint hint {};
   String hint_string {};
-  int hint_type_separator = p_hint_string.find(":");
 
+  int hint_type_separator = p_hint_string.find(":");
   int key_value_separator = p_hint_string.find(";");
   if (key_value_separator >= 0) {
-    out += normalize_hint_string(p_hint_string.substr(0,key_value_separator), false);
+    pi = p_property_info;
+    pi.hint_string = p_hint_string.substr(0,key_value_separator);
+    out += normalize_hint_string(pi, false);
     out += ";";
-    out += normalize_hint_string(p_hint_string.substr(key_value_separator + 1), false);
+    pi.hint_string = p_hint_string.substr(key_value_separator + 1);
+    out += normalize_hint_string(pi, false);
 
     goto PRINT_AND_RET;
   }
@@ -61,7 +76,10 @@ static String normalize_hint_string(const String &p_hint_string, bool is_main_ca
     }
 
     if (type_string.is_valid_int()) {
-      type = (Variant::Type) type_string.to_int();
+      uint type_as_int = type_string.to_int();
+      if (type_as_int < Variant::VARIANT_MAX) {
+        type = Variant::Type(type_as_int);
+      }
     } else {
       type_string = type_string.to_snake_case().to_upper();
       if (variant_type_names_map().has(type_string)) {
@@ -69,7 +87,10 @@ static String normalize_hint_string(const String &p_hint_string, bool is_main_ca
       }
     }
 
-    hint_string = normalize_hint_string(p_hint_string.substr(hint_type_separator + 1), false);
+    pi.type = type;
+    pi.hint = hint;
+    pi.hint_string = p_hint_string.substr(hint_type_separator + 1);
+    hint_string = normalize_hint_string(pi, false);
   } else {
     type = Variant::get_type_by_name(p_hint_string);
 
@@ -82,15 +103,17 @@ static String normalize_hint_string(const String &p_hint_string, bool is_main_ca
   out += String::num_int64(type) + String("/") + String::num_int64(hint) + String(":") + hint_string;
 
   PRINT_AND_RET:
+    out = out.remove_chars(" ");
     if (is_main_call) {
-      debug_print_rich(vformat(COLOR_GREEN("Hint string normalized from '%s' to '%s'"), p_hint_string, out));
+      debug_print_rich(vformat(COLOR_GREEN("Normalized >>> Hint string from '%s' to '%s'"), p_hint_string, out));
     }
-    
+
     return out;
 }
 
 static Variant normalize_value(const PropertyInfo &p_property_info, const Object* p_object = nullptr, const Variant &p_value = Variant());
 
+/** @todo Check if satisfies Array type */
 static Variant normalize_range(const PropertyInfo &p_property_info, const Variant &p_value) {
   Variant::Type type = p_property_info.type;
   if (type != Variant::INT && type != Variant::FLOAT) {
@@ -272,8 +295,7 @@ static Variant normalize_file(const PropertyInfo &p_property_info, const Variant
 }
 
 static Variant normalize_resource_type(const PropertyInfo &p_property_info, const Variant &p_value) {
-  Variant::Type type = p_property_info.type;
-  if (type != Variant::OBJECT) {
+  if (p_property_info.type != Variant::OBJECT) {
     return {};
   }
 
@@ -286,6 +308,7 @@ static Variant normalize_resource_type(const PropertyInfo &p_property_info, cons
     return {};
   }
 
+  /** @todo Might not work as expected in Object/ResourceType:BoxShape3D or similar, there's no commas */
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
   if (hint_string_entries.is_empty()) {
     return {p_value};
@@ -458,12 +481,33 @@ static Variant normalize_node_type(const PropertyInfo &p_property_info, const Va
   return {};
 }
 
+static Variant normalize_input_name(const PropertyInfo &p_property_info, const Variant &p_value) {
+  Variant::Type type = p_property_info.type;
+  if (type != Variant::STRING && type != Variant::STRING_NAME) {
+    return {};
+  }
+
+  if (p_value == Variant()) {
+    return {};
+  }
+
+  const TypedArray<StringName> &actions = InputMap::get_singleton()->get_actions();
+
+  if (p_property_info.hint_string.remove_chars(" ") == String("show_builtin")) {
+    if (not actions.has(p_value)) {
+      return {};
+    }
+  }
+
+  return {p_value};
+}
+
 static Variant normalize_value(const PropertyInfo &p_property_info, const Object* p_object /* = nullptr */, const Variant &p_value /* = Variant() */) {
   Variant out {};
 
   PropertyInfo pi {p_property_info};
   if (pi.type == Variant::ARRAY || pi.type == Variant::DICTIONARY) {
-    if (pi.hint == PROPERTY_HINT_NONE) {
+    if (pi.hint == PROPERTY_HINT_NONE || pi.hint == PROPERTY_HINT_ARRAY_TYPE || pi.hint == PROPERTY_HINT_DICTIONARY_TYPE) {
       pi.hint = PROPERTY_HINT_TYPE_STRING;
     }
   }
@@ -489,6 +533,7 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
     case PROPERTY_HINT_EXP_EASING:
       out = normalize_exp_easing(pi, value);
       break;
+    /** @todo Verify */
     case PROPERTY_HINT_FILE:
     case PROPERTY_HINT_GLOBAL_FILE:
     case PROPERTY_HINT_SAVE_FILE:
@@ -500,25 +545,27 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
       out = normalize_resource_type(pi, value);
       break;
     case PROPERTY_HINT_OBJECT_ID:
-      /** @todo handle */
+      /** @todo Can't understand this */
       break;
+    // case PROPERTY_HINT_ARRAY_TYPE:
+    // case PROPERTY_HINT_DICTIONARY_TYPE:
     case PROPERTY_HINT_TYPE_STRING:
       out = normalize_string_type(pi, p_object, value);
       break;
     case PROPERTY_HINT_NODE_PATH_VALID_TYPES:
       out = normalize_node_path_valid_types(pi, p_object, value);
       break;
-    case PROPERTY_HINT_ARRAY_TYPE:
-      out = normalize_array_type(pi, p_object, value);
-      break;
-    case PROPERTY_HINT_DICTIONARY_TYPE:
-      /** @todo handle */
-      break;
+    // case PROPERTY_HINT_ARRAY_TYPE:
+    //   out = normalize_array_type(pi, p_object, value);
+    //   break;
+    // case PROPERTY_HINT_DICTIONARY_TYPE:
+    //   /** @todo handle */
+    //   break;
     case PROPERTY_HINT_NODE_TYPE:
       out = normalize_node_type(pi, value);
       break;
     case PROPERTY_HINT_INPUT_NAME:
-      /** @todo handle */
+      out = normalize_input_name(pi, value);
       break;
     default:
       break;
@@ -528,11 +575,17 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
     out = get_variant_default_value(pi.type);
   }
 
-  bool use_quotes = pi.type == Variant::STRING || pi.type == Variant::STRING_NAME || pi.type == Variant::NODE_PATH;
-  debug_print_rich(vformat(
-    COLOR_GREEN("NORMALIZED VALUE [%s = %s] (%s(%s)/%s(%s))"), 
-    pi.name, use_quotes? (Variant)vformat("\"%s\"", out) : out, Variant::get_type_name(pi.type), pi.type, "property_hint_lookup()[pi.hint]", pi.hint)
-  );
+  if (p_object == nullptr) {
+    debug_print_rich(vformat(
+      COLOR_GREEN("Normalized >>> Property's '%s' value to '%s'"), 
+      pi.name, out
+    ));
+  } else {
+    debug_print_rich(vformat(
+      COLOR_GREEN("Normalized >>> Property's '%s' value from '%s' to '%s' to satisfy possible new hint string restrictions"), 
+      pi.name, value, out
+    ));
+  }
 
   return out;
 }
@@ -649,6 +702,10 @@ static String get_property_usage_flags_hint_string(ValueNameType p_name_type) {
 
 static const String& get_values_name_type_hint_string() {
   static String hint_string {};
+
+  if (not hint_string.is_empty()) {
+    return hint_string;
+  }
 
   for (int type = 0; type < VALUE_NAME_MAX ; type++) {
     if (not hint_string.is_empty()) {
@@ -852,13 +909,13 @@ void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object
       return;
     }
 
-    /** @todo hint_string translator */
-
     PropertyInfo root_pi = root_dpi->get_property_info();
     String property = root_dpi->get_property_select();
 
-    // normalize_hint_string(root_pi.hint_string);
-    root_pi.hint_string = normalize_hint_string(root_pi.hint_string);
+    if (root_pi.hint_string != previous->hint_string) {
+      root_dpi->canonical_hint_string = normalize_hint_string(root_pi);
+    }
+    root_pi.hint_string = root_dpi->canonical_hint_string;
 
     if (root_dpi->type != previous->type || root_dpi->hint != previous->hint) {
       Variant new_value = normalize_value(root_pi);
@@ -914,6 +971,10 @@ void DynamicPropertyInfoInspectorPlugin::_parse_begin(Object *p_object) {
   if (root_dpi.is_null()) {
     root_dpi.instantiate();
     p_object->set(root_dpi_name, root_dpi);
+  }
+
+  if (root_dpi->canonical_hint_string.is_empty()) {
+    root_dpi->canonical_hint_string = normalize_hint_string(root_dpi->get_property_info());
   }
 
   Callable bound_callable = callable_mp_static(&DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed).bind(p_object, root_dpi);
@@ -1002,7 +1063,7 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
     target_dpi->get_type(), 
     p_name, 
     static_cast<PropertyHint>(target_dpi->get_hint()),
-    normalize_hint_string(target_dpi->get_hint_string()),
+    target_dpi->canonical_hint_string,
     target_dpi->get_usage(),
     p_wide
   );
