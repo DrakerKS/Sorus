@@ -41,11 +41,10 @@ namespace godot {
       SORUS_DECL(uint32_t, hint, PROPERTY_HINT_NONE);
       SORUS_DECL(String, hint_string);
       SORUS_DECL(uint32_t, usage, PROPERTY_USAGE_DEFAULT);
-      SORUS_DECL(Dictionary, property_info_dict); /*<[StringName, Ref<DynamicPropertyInfo>]>*/
+      SORUS_DECL(Dictionary, properties_dict); /*<[StringName, Ref<DynamicPropertyInfo>]>*/
       SORUS_DECL(int, values_name_type, DEFAULT_NAME_TYPE);
 
       String canonical_hint_string {};
-
       String get_property_names_hint_string () const;
 
     protected:
@@ -95,6 +94,7 @@ namespace godot {
     private:
       Ref<DynamicPropertyInfo> root_dpi {nullptr};
       StringName root_dpi_name {};
+      HashSet<StringName> current_d_properties {};
 
       static constexpr const char STD_DYNAMIC_PROP_PREFIX[] = "d_";
 
