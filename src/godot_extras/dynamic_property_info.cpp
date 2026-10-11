@@ -24,7 +24,7 @@ using namespace godot;
 
 #pragma region HelperFunctions
 
-static Variant normalize_value(const PropertyInfo &p_property_info, const Object* p_object = nullptr, bool p_prefer_default = false, const Variant &p_inner_value = nullptr);
+static Variant normalize_value(const PropertyInfo &p_property_info, const Variant &p_value = nullptr, const Node * p_node_context = nullptr, bool p_type_strict = false);
 static String normalize_hint_string(const PropertyInfo &p_property_info, bool is_main_call = true);
 
 /** @note Reviewed */
@@ -228,7 +228,7 @@ static Variant normalize_range(const PropertyInfo &p_property_info, const Varian
 
   @note Parameter 'p_prefer_default' only matters if int typed.
 */
-static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant &p_value, bool p_prefer_default) {
+static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant &p_value) {
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
   if (hint_string_entries.is_empty()) {
     return {};
@@ -259,9 +259,6 @@ static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant
 
     if (first_visit) {
       first_entry_numeric = last_visited;
-      if (p_prefer_default) {
-        return {first_entry_numeric};
-      }
       first_visit = false;
     }
 
@@ -273,22 +270,16 @@ static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant
   return {first_entry_numeric};
 }
 
-/** @note Reviewed 
+/** @note Reviewed+ 
   @brief
     From a hint string optionally containing "positive_only" ensures p_value is not negative.
 
-  @returns
-    Same value if not a float.
   @returns
     Default value 0.0 if "positive_only" is present and p_value is negative.
   @returns
     Same value otherwise.
 */
 static Variant normalize_exp_easing(const PropertyInfo &p_property_info, const Variant &p_value) {
-  if (p_property_info.type != Variant::FLOAT) { 
-    return {p_value};
-  }
-
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",",false);
   if (hint_string_entries.has("positive_only") && (float)p_value < 0) {
     return {0.0};
@@ -459,7 +450,7 @@ static Variant normalize_resource_type(const PropertyInfo &p_property_info, cons
 
     PropertyInfo = {int, name, Enum, "a,b,c,d"}
   */
-static Variant normalize_type_string(const PropertyInfo &p_property_info, const Object* p_object, const Variant &p_value) {
+static Variant normalize_type_string(const PropertyInfo &p_property_info, const Variant &p_value, const Node *p_node_context) {
   Variant::Type type = p_property_info.type;
   
   /**
@@ -494,7 +485,7 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
 
     for (int i = 0; i < size; i++) {
       pi.name = p_property_info.name + vformat("[%s]", i);
-      Variant curr_normalized = normalize_value(pi, p_object, false, array[i - deleted]);
+      Variant curr_normalized = normalize_value(pi, array[i - deleted], p_node_context, true);
       
       print_line(vformat("FLAG A [%s] >>> %s", i, curr_normalized));
       if (curr_normalized.get_type() == Variant::NIL) {
@@ -531,7 +522,7 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
   @note
     Validation is performed relative to p_object, which must be a Node containing the target path.
 */
-static Variant normalize_node_path_valid_types(const PropertyInfo &p_property_info, const Object* p_object, const Variant &p_value) {
+static Variant normalize_node_path_valid_types(const PropertyInfo &p_property_info, const Variant &p_value, const Node *p_node_context) {
   if (p_property_info.type != Variant::NODE_PATH) {
     return {p_value};
   }
@@ -541,16 +532,15 @@ static Variant normalize_node_path_valid_types(const PropertyInfo &p_property_in
     return {p_value};
   }
 
-  const Node *node = Object::cast_to<Node>(p_object);
-  if (node == nullptr) {
+  if (p_node_context == nullptr) {
     debug_print_rich(vformat(
-      COLOR_YELLOW("Normalized >>> Unable to cast 'p_object' to Node, cannot validate property's '%s' path. Same path is returned."),
+      COLOR_YELLOW("Normalized >>> Provided 'p_node_context' is null, cannot validate '%s' property's path. Same path is returned."),
       p_property_info.name
     ));
     return {p_value};
   }
 
-  const Node *target = node->get_node_or_null((NodePath)p_value);
+  const Node *target = p_node_context->get_node_or_null((NodePath)p_value);
   if (target == nullptr) {
     return {};
   }
@@ -561,26 +551,6 @@ static Variant normalize_node_path_valid_types(const PropertyInfo &p_property_in
     }
   }
 
-  return {};
-}
-
-static Variant normalize_array_type(const PropertyInfo &p_property_info, const Object* p_object, const Variant &p_value) {
-  if (p_property_info.type != Variant::ARRAY) {
-    return {};
-  }
-
-  if (p_value == Variant()) {
-    return {};
-  }
-
-  if (p_property_info.hint_string.is_empty()) {
-    return {};
-  }
-
-  return {};
-}
-
-static Variant normalize_dictionary_type(const PropertyInfo &p_property_info, const Object* p_object, const Variant &p_value) {
   return {};
 }
 
@@ -741,9 +711,9 @@ static Variant normalize_input_name(const PropertyInfo &p_property_info, const V
 */
 static Variant normalize_value(
   const PropertyInfo &p_property_info, 
-  const Object* p_object /* = nullptr */, 
-  bool p_prefer_default /* = false */, 
-  const Variant &p_inner_value /* = nullptr */
+  const Variant &p_value, 
+  const Node *p_node_context /* = nullptr*/,
+  bool p_type_strict /* = false */
 ) {
   Variant out {};
 
@@ -754,14 +724,6 @@ static Variant normalize_value(
     }
   }
 
-  Variant value {p_inner_value};
-  bool type_strict = false;
-  if (value.get_type() == Variant::NIL) {
-    value = (p_object)? p_object->get(pi.name) : nullptr;
-  } else {
-    type_strict = true;
-  }
-
   /** 
     When reading case annotations assume Type/Hint combination is compatible. Don't worry when this is not true as any incompatible Type/Hint 
     combination behaves exactly the same as Type/HintNone, even inside normalize_*() functions.
@@ -769,35 +731,39 @@ static Variant normalize_value(
   switch ((PropertyHint) pi.hint) {
     case PROPERTY_HINT_NONE:
       /** Hint string is a visual suffix only, no need to normalize, any value could be valid. */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_RANGE:
       if (pi.type != Variant::INT && pi.type != Variant::FLOAT && pi.type != Variant::ARRAY) {
-        out = type_strict? Variant{} : value;
+        out = p_type_strict? Variant{} : p_value;
       } else {
-        out = normalize_range(pi, value);
+        out = normalize_range(pi, p_value);
       }
       break;
     case PROPERTY_HINT_ENUM:
       if (pi.type != Variant::INT && pi.type != Variant::STRING && pi.type != Variant::STRING_NAME) {
-        out = type_strict? Variant{} : value;
+        out = p_type_strict? Variant{} : p_value;
       } else {
-        out = normalize_enum(pi, value, p_prefer_default);
+        out = normalize_enum(pi, p_value);
       }
       break;
     case PROPERTY_HINT_ENUM_SUGGESTION:
       /** Any value is valid, no need to normalize. */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_EXP_EASING:
-      out = normalize_exp_easing(pi, value);
+      if (pi.type != Variant::FLOAT) {
+        out = p_type_strict? Variant{} : p_value;
+      } else {
+        out = normalize_exp_easing(pi, p_value);
+      }
       break;
     case PROPERTY_HINT_LINK:
       /** Hint string is a visual suffix only. No need to normalize. */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_FLAGS:
-      out = normalize_flags(pi, value);
+      out = normalize_flags(pi, p_value);
       break;
     case PROPERTY_HINT_LAYERS_2D_RENDER:
     case PROPERTY_HINT_LAYERS_2D_PHYSICS:
@@ -806,153 +772,148 @@ static Variant normalize_value(
     case PROPERTY_HINT_LAYERS_3D_PHYSICS:
     case PROPERTY_HINT_LAYERS_3D_NAVIGATION:
     case PROPERTY_HINT_LAYERS_AVOIDANCE:
-      /** These cases don't use the hint string. These are bitmasks that use layers already defined in project settings, thus, there's no need to normalize. Any value could be valid, but not every type can use it correctly. */
-      out = value;
+      /** These cases don't use the hint string. These are bitmasks that use layers already defined in project settings, thus, there's no need to normalize. Any p_value could be valid, but not every type can use it correctly. */
+      out = p_value;
       break;
     case PROPERTY_HINT_FILE:
-      out = normalize_file(pi, value);
+      out = normalize_file(pi, p_value);
       break;
     case PROPERTY_HINT_DIR:
       /** Any value is valid, no need to normalize. */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_GLOBAL_FILE:
-      out = normalize_file(pi, value, true);
+      out = normalize_file(pi, p_value, true);
       break;
     case PROPERTY_HINT_GLOBAL_DIR:
-      out = normalize_global_dir(pi, value);
+      out = normalize_global_dir(pi, p_value);
       break;
     case PROPERTY_HINT_RESOURCE_TYPE:
-      out = normalize_resource_type(pi, value);
+      out = normalize_resource_type(pi, p_value);
       break;
     case PROPERTY_HINT_MULTILINE_TEXT:
       /** Hint string is visual only, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_EXPRESSION:
       /** Doesn't use the hint string, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_PLACEHOLDER_TEXT:
       /** Hint string is visual only, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_COLOR_NO_ALPHA:
       /** Doesn't use the hint string, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_OBJECT_ID:
       /** Can't understand this, but has something to do with the debugger so, no need to normalize? */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_TYPE_STRING: /** @todo Check */
       if (pi.type != Variant::STRING && pi.type != Variant::ARRAY && pi.type != Variant::DICTIONARY) {
-        return type_strict? Variant{} : value;
+        return p_type_strict? Variant{} : p_value;
       }
-      out = normalize_type_string(pi, p_object, value);
+      out = normalize_type_string(pi, p_value, p_node_context);
       break;
     case PROPERTY_HINT_NODE_PATH_TO_EDITED_NODE:
       /** @deprecated Not used by godot anymore, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_OBJECT_TOO_BIG:
       /** Internal info for godot only, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_NODE_PATH_VALID_TYPES:
-      out = normalize_node_path_valid_types(pi, p_object, value);
+      out = normalize_node_path_valid_types(pi, p_value, p_node_context);
       break;
     case PROPERTY_HINT_SAVE_FILE:
-      out = normalize_file(pi, value);
+      out = normalize_file(pi, p_value);
       break;
     case PROPERTY_HINT_GLOBAL_SAVE_FILE:
-      out = normalize_file(pi, value, true);
+      out = normalize_file(pi, p_value, true);
       break;
     case PROPERTY_HINT_INT_IS_OBJECTID:
       /** @deprecated Not used by godot anymore, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_INT_IS_POINTER:
       /** Internal info for godot only, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_ARRAY_TYPE:
       /** @todo handle */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_DICTIONARY_TYPE:
       /** @todo handle */
       break;
     case PROPERTY_HINT_LOCALE_ID:
-      out = normalize_locale_id(pi, value);
+      out = normalize_locale_id(pi, p_value);
       break;
     case PROPERTY_HINT_LOCALIZABLE_STRING:
       /** @todo handle */
       break;
     case PROPERTY_HINT_NODE_TYPE:
-      out = normalize_node_type(pi, value);
+      out = normalize_node_type(pi, p_value);
       break;
     case PROPERTY_HINT_HIDE_QUATERNION_EDIT:
       /** Doesn't use the hint string, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_PASSWORD:
       /** Visual only, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_TOOL_BUTTON:
       /** Hint string is visual only, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_ONESHOT:
       /** Can't understand this, but seems to not use hint string, so, no need to normalize? */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_GROUP_ENABLE:
       /** Hint string is visual only, no need to normalize */
-      out = value;
+      out = p_value;
       break;
     case PROPERTY_HINT_INPUT_NAME:
-      out = normalize_input_name(pi, value);
+      out = normalize_input_name(pi, p_value);
       break;
     case PROPERTY_HINT_FILE_PATH:
-      out = normalize_file(pi, value);
+      out = normalize_file(pi, p_value);
       break;
     case PROPERTY_HINT_MAX:
-      WARN_PRINT("Attempted to normalize a value using \"PROPERTY_HINT_MAX\" hint. Input value is returned.");
-      out = value;
+      WARN_PRINT("Attempted to normalize a value using \"PROPERTY_HINT_MAX\" hint. Input 'p_value' is returned.");
+      out = p_value;
   }
 
   if (out.get_type() == Variant::NIL) {
-    if (type_strict) {
+    if (p_type_strict) {
       return {};
     }
 
     out = get_variant_default_value(pi.type);
   }
 
-  if (type_strict && out.get_type() != pi.type) {
+  if (p_type_strict && out.get_type() != pi.type) {
     return {};
   }
 
-  if (out == value) {
+  if (out == p_value) {
     return out;
   }
 
-  if (p_object == nullptr) {
+  if (p_value.get_type() == Variant::NIL) {
     debug_print_rich(vformat(
-      COLOR_GREEN("Normalized >>> Property's '%s' value to '%s'"), 
+      COLOR_GREEN("Normalized >>> Property '%s' value to '%s'"), 
       pi.name, out
-    ));
-  } else if (p_prefer_default) {
-    debug_print_rich(vformat(
-      COLOR_GREEN("Normalized >>> Property's '%s' value from '%s' to '%s'"), 
-      pi.name, value, out
     ));
   } else {
     debug_print_rich(vformat(
-      COLOR_GREEN("Normalized >>> Property's '%s' value from '%s' to '%s' since previous value was no longer valid"), 
-      pi.name, value, out
+      COLOR_GREEN("Normalized >>> Property '%s' value from '%s' to '%s' since previous value was no longer suitable"), 
+      pi.name, p_value, out
     ));
   }
 
@@ -1298,23 +1259,17 @@ void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object
     }
 
     PropertyInfo root_pi = root_dpi->get_property_info();
-    String property = root_dpi->get_property_select();
-
-    if (root_pi.hint_string != previous->hint_string) {
+    if (root_dpi->hint_string != previous->hint_string) {
       root_dpi->canonical_hint_string = normalize_hint_string(root_pi);
     }
     root_pi.hint_string = root_dpi->canonical_hint_string;
 
     if (root_dpi->type != previous->type) {
       Variant new_value = normalize_value(root_pi);
-      p_object->set(property, new_value);
-    } else if (root_dpi->hint != previous->hint) {
-      Variant new_value = normalize_value(root_pi, p_object, true);
-      p_object->set(property, new_value);
-    }
-    else if (root_dpi->hint_string != previous->hint_string) {
-      Variant new_value = normalize_value(root_pi, p_object);
-      p_object->set(property, new_value);
+      p_object->set(root_pi.name, new_value);
+    } else if (root_dpi->hint != previous->hint || root_dpi->hint_string != previous->hint_string) {
+      Variant new_value = normalize_value(root_pi, p_object->get(root_pi.name), Object::cast_to<Node>(p_object));
+      p_object->set(root_pi.name, new_value);
     }
   }
 
