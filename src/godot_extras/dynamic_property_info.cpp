@@ -7,6 +7,7 @@
 #include "godot_cpp/classes/input_map.hpp"
 #include "godot_cpp/classes/button.hpp"
 #include "godot_cpp/classes/node.hpp"
+#include "godot_cpp/classes/class_db_singleton.hpp"
 
 #include "godot_cpp/variant/callable_method_pointer.hpp"
 
@@ -23,7 +24,37 @@ using namespace godot;
 
 #pragma region HelperFunctions
 
-static Variant normalize_value(const PropertyInfo &p_property_info, const Object* p_object = nullptr, bool prefer_default = false);
+static Variant normalize_value(const PropertyInfo &p_property_info, const Object* p_object = nullptr, bool p_prefer_default = false, const Variant &p_inner_value = nullptr);
+static String normalize_hint_string(const PropertyInfo &p_property_info, bool is_main_call = true);
+
+/** @note Reviewed */
+static PropertyInfo hint_string_to_pi(const String &p_hint_string) {
+  PropertyInfo out {};
+
+  int hint_string_separator = p_hint_string.find(":");
+  if (hint_string_separator >= 0) {
+    String type_as_string = p_hint_string.substr(0, hint_string_separator);
+    out.hint_string = p_hint_string.substr(hint_string_separator + 1);
+
+    int hint_slash = p_hint_string.find("/");
+    if (hint_slash >= 0) {
+      String hint_as_string = type_as_string.substr(hint_slash + 1);
+      if (hint_as_string.is_valid_int()) {
+        uint32_t hint = hint_as_string.to_int();
+        out.hint = hint < PROPERTY_HINT_MAX? hint : out.hint;
+      }
+
+      type_as_string = p_hint_string.substr(0, hint_slash);
+    } else {
+      type_as_string = p_hint_string.substr(0, hint_string_separator);
+    }
+
+    uint32_t type = type_as_string.to_int();
+    out.type = type < Variant::VARIANT_MAX? Variant::Type(type) : out.type;
+  }
+
+  return out;
+}
 
 /** @note Reviewed
   @brief
@@ -45,7 +76,7 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
   @note
     Spaces are removed from the resulting hint string. Debug output is printed only for the main call, not recursive calls.
 */
-static String normalize_hint_string(const PropertyInfo &p_property_info, bool is_main_call = true) {
+static String normalize_hint_string(const PropertyInfo &p_property_info, bool is_main_call /* = true */) {
   if (p_property_info.type != Variant::ARRAY && p_property_info.type != Variant::DICTIONARY) {
     return p_property_info.hint_string;
   }
@@ -132,19 +163,19 @@ static String normalize_hint_string(const PropertyInfo &p_property_info, bool is
     return out;
 }
 
-/** @note Reviewed 
+/** @note Reviewed+ 
   @brief 
     From a hint string "min,max,step" and optionally "...,or_greater" and/or "...,or_less" (other possible entries don't matter for this operation)
     takes min and max value and ensures p_value is within this range. The "or_less" and "or_greater" entries respectively remove the min and max restrictions.
 
   @returns 
-    Same value if not an int, float or Array or if the hint string is invalid.
+    Null variant if hint string is invalid.
   @returns 
     Default value 'max' if p_value is null.
   @returns 
     Same value if in range.
   @returns 
-    Normalized value clamped to min,max (keeping in mind "or_greater" and "or_less" liberties).
+    Normalized value clamped to min or max (keeping in mind "or_greater" and "or_less" liberties).
 
   @note 
     Works with int, float or Array. If an Array, redirects into normalize_value() as Array/TypeString to later treat each value individually.
@@ -158,19 +189,14 @@ static Variant normalize_range(const PropertyInfo &p_property_info, const Varian
     return normalize_value(larper, p_value);
   }
 
-  if (type != Variant::INT && type != Variant::FLOAT) {
-    return {p_value};
-  }
-
-  // 1 , 100 ,1
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
   if (hint_string_entries.size() < 2) {
-    return {p_value};
+    return {};
   }
 
   #define NORMALIZE_TYPE(m_type) do { \
     if (not hint_string_entries[0].JOIN(is_valid,m_type)() || not hint_string_entries[1].JOIN(is_valid,m_type)()) { \
-      return {p_value}; \
+      return {}; \
     } \
     if (p_value == Variant()) { \
       return hint_string_entries[1].JOIN(to,m_type)(); \
@@ -189,12 +215,12 @@ static Variant normalize_range(const PropertyInfo &p_property_info, const Varian
   #undef NORMALIZE_TYPE
 }
 
-/** @note Reviewed 
+/** @note Reviewed+ 
   @brief 
     From a hint string "Op1,Op2,Op3:Op3Val,Op4,..." ensures p_value is equal to one of these values. Follows Godot's rules for Enum:hint_string formatting.
 
-  @returns
-    Same value if not an int, String or StringName or if the hint string is empty.
+  @returns 
+    Null variant if hint string is invalid.  
   @returns 
     Same value if suitable.
   @returns
@@ -203,18 +229,13 @@ static Variant normalize_range(const PropertyInfo &p_property_info, const Varian
   @note Parameter 'p_prefer_default' only matters if int typed.
 */
 static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant &p_value, bool p_prefer_default) {
-  Variant::Type type = p_property_info.type;
-  if (type != Variant::INT && type != Variant::STRING && type != Variant::STRING_NAME) {
-    return {p_value};
-  }
-
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
   if (hint_string_entries.is_empty()) {
-    return {p_value};
+    return {};
   }
 
   String first_entry = hint_string_entries[0];
-  if (type != Variant::INT) {
+  if (p_property_info.type != Variant::INT) {
     if (hint_string_entries.has(p_value)) {
       return {p_value};
     }
@@ -423,56 +444,68 @@ static Variant normalize_resource_type(const PropertyInfo &p_property_info, cons
 }
 
   /**
-    p_value = [[a,"fea",b,32.f], [c,d,b,c]]
+    p_value = [[a, "abc", b, 32.3], [c, d, b, c]]
 
     PropertyInfo = {Array, name, TypeString/ArrayType, "Array/0:int/Enum:a,b,c,d"}
 
-    inner = [a,b,c,d]
+    inner = [a, "abc", b, 32.3]
 
     PropertyInfo = {Array, name, TypeString/ArrayType, "int/Enum:a,b,c,d"}
 
-    innerb = a
+    innerb = a      >>> a
+    innerb = "abc"  >>> null
+    innerb = b      >>> b
+    innerb = 32.3   >>> null
 
     PropertyInfo = {int, name, Enum, "a,b,c,d"}
   */
 static Variant normalize_type_string(const PropertyInfo &p_property_info, const Object* p_object, const Variant &p_value) {
   Variant::Type type = p_property_info.type;
-  if (type != Variant::STRING && type != Variant::ARRAY && type != Variant::DICTIONARY) {
-    return {p_value};
-  }
-
+  
+  /**
+    String/TypeString is a weird case cause it only works if the hint string has exactly one type and nothing else, otherwise using these properties
+    leads to a crash. Doesn't seem intentional but that's what it is, thus it's treated in a general way that works with it but also works with how 
+    it most likely it's supposed to, which is a bunch of types, separated by commas, if p_value matches one of these then it's returned back, null 
+    variant if not, this keeps the code usable even if Godot patches this.
+  */
   if (type == Variant::STRING) {
-    /**
-      String/TypeString is a weird case cause it only works if the hint string has exactly one type and nothing else, otherwise using these properties
-      leads to a crash. Doesn't seem intentional but that's what it is, thus it's treated in a general way that works with it but also works with how 
-      it most likely it's supposed to, which is a bunch of types, separated by commas, if p_value matches one of these then it's returned back, null 
-      variant if not, this keeps the code usable even if Godot patches this.
-    */
     PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
     if (hint_string_entries.is_empty()) {
       return {p_value};
     }
 
     for (const String &entry : hint_string_entries) {
-      if (String(p_value) == entry) {
+      if (String(p_value) == entry && ClassDBSingleton::get_singleton()->is_class(entry)) {
         return {p_value};
       }
-      return {};
     }
 
     return {};
   }
 
-
-
-  PropertyInfo pi;
-  int hint_string_separator = p_property_info.hint_string.find(":");
-  if (hint_string_separator >= 0) {
-    
-  }
+  PropertyInfo pi {hint_string_to_pi(p_property_info.hint_string)};
 
   if (type == Variant::ARRAY) {
-    
+    Array array {}; array.append_array(p_value);
+    int deleted = 0;
+    int size = array.size();
+
+    print_line(vformat("FLAG >>> %s/%s:%s - %s", pi.type, pi.hint, pi.hint_string, array));
+
+    for (int i = 0; i < size; i++) {
+      pi.name = p_property_info.name + vformat("[%s]", i);
+      Variant curr_normalized = normalize_value(pi, p_object, false, array[i - deleted]);
+      
+      print_line(vformat("FLAG A [%s] >>> %s", i, curr_normalized));
+      if (curr_normalized.get_type() == Variant::NIL) {
+        array.remove_at(i - deleted++);
+        print_line(vformat("FLAG B [%s] >>> %s", i, array));
+      } else {
+        array.set(i - deleted, curr_normalized);
+      }
+    }
+
+    return array;
   }
 
   return {p_value};
@@ -605,8 +638,6 @@ static Variant normalize_localizable_string(const PropertyInfo &p_property_info,
     return {p_value};
   }
 
-  /** @todo handle */
-
   return {};
 }
 
@@ -704,11 +735,16 @@ static Variant normalize_input_name(const PropertyInfo &p_property_info, const V
     Same current p_object's target property value if suitable for the Type/Hint:HintString combination or if Type/Hint is incompatible.
 
   @warning 
-    Assumes p_property_info.hint_string is normalized @see normalize_hint_string().
+    Assumes p_property_info.hint_string is normalized @see normalize_hint_string(), behavior is undefined otherwise in cases that use PropertyInfo syntax on their hint string.
     If the hint string contains spaces the behavior is undefined. Unless it makes sense for the hint string to have spaces like String/Enum where each value could
     be represented by multiple words, in this cases behavior is well defined. Type Array and Dictionary already had spaces removed during normalization.
 */
-static Variant normalize_value(const PropertyInfo &p_property_info, const Object* p_object /* = nullptr */, bool p_prefer_default /* = false */) {
+static Variant normalize_value(
+  const PropertyInfo &p_property_info, 
+  const Object* p_object /* = nullptr */, 
+  bool p_prefer_default /* = false */, 
+  const Variant &p_inner_value /* = nullptr */
+) {
   Variant out {};
 
   PropertyInfo pi {p_property_info};
@@ -718,7 +754,13 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
     }
   }
 
-  Variant value = (p_object)? p_object->get(pi.name) : nullptr;
+  Variant value {p_inner_value};
+  bool type_strict = false;
+  if (value.get_type() == Variant::NIL) {
+    value = (p_object)? p_object->get(pi.name) : nullptr;
+  } else {
+    type_strict = true;
+  }
 
   /** 
     When reading case annotations assume Type/Hint combination is compatible. Don't worry when this is not true as any incompatible Type/Hint 
@@ -730,10 +772,18 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
       out = value;
       break;
     case PROPERTY_HINT_RANGE:
-      out = normalize_range(pi, value);
+      if (pi.type != Variant::INT && pi.type != Variant::FLOAT && pi.type != Variant::ARRAY) {
+        out = type_strict? Variant{} : value;
+      } else {
+        out = normalize_range(pi, value);
+      }
       break;
     case PROPERTY_HINT_ENUM:
-      out = normalize_enum(pi, value, p_prefer_default);
+      if (pi.type != Variant::INT && pi.type != Variant::STRING && pi.type != Variant::STRING_NAME) {
+        out = type_strict? Variant{} : value;
+      } else {
+        out = normalize_enum(pi, value, p_prefer_default);
+      }
       break;
     case PROPERTY_HINT_ENUM_SUGGESTION:
       /** Any value is valid, no need to normalize. */
@@ -741,6 +791,7 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
       break;
     case PROPERTY_HINT_EXP_EASING:
       out = normalize_exp_easing(pi, value);
+      break;
     case PROPERTY_HINT_LINK:
       /** Hint string is a visual suffix only. No need to normalize. */
       out = value;
@@ -795,6 +846,9 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
       out = value;
       break;
     case PROPERTY_HINT_TYPE_STRING: /** @todo Check */
+      if (pi.type != Variant::STRING && pi.type != Variant::ARRAY && pi.type != Variant::DICTIONARY) {
+        return type_strict? Variant{} : value;
+      }
       out = normalize_type_string(pi, p_object, value);
       break;
     case PROPERTY_HINT_NODE_PATH_TO_EDITED_NODE:
@@ -824,6 +878,7 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
       break;
     case PROPERTY_HINT_ARRAY_TYPE:
       /** @todo handle */
+      out = value;
       break;
     case PROPERTY_HINT_DICTIONARY_TYPE:
       /** @todo handle */
@@ -868,8 +923,16 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
       out = value;
   }
 
-  if (out == Variant()) {
+  if (out.get_type() == Variant::NIL) {
+    if (type_strict) {
+      return {};
+    }
+
     out = get_variant_default_value(pi.type);
+  }
+
+  if (type_strict && out.get_type() != pi.type) {
+    return {};
   }
 
   if (out == value) {
@@ -883,7 +946,7 @@ static Variant normalize_value(const PropertyInfo &p_property_info, const Object
     ));
   } else if (p_prefer_default) {
     debug_print_rich(vformat(
-      COLOR_GREEN("Normalized >>> Property's '%s' value from '%s' to preferred default '%s'"), 
+      COLOR_GREEN("Normalized >>> Property's '%s' value from '%s' to '%s'"), 
       pi.name, value, out
     ));
   } else {
@@ -1132,7 +1195,6 @@ String DynamicPropertyInfo::get_property_names_hint_string() const {
 
   return out;
 }
-
   
   #pragma region ::Setters & Getters
     #define DPI_SETTER(m_type, m_member) \
@@ -1372,15 +1434,6 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
 
   debug_print_rich(vformat("PARSE PROPERTY >>> %s", p_name), true);
 
-  /** 
-    Apply a normalzation for types that hold values that might not be valid anymore and are not necesarilly selected i.e. NodePath pointing to a no longer existent node.
-  */
-  Ref<DynamicPropertyInfo> previous = root_dpi->properties_dict.get(p_name, nullptr);
-  if (previous.is_valid()) {
-    Variant normalized = normalize_value(previous->get_property_info(), p_object);
-    p_object->set(p_name, normalized);
-  }
-
   /**
     Target dpi is the one that focuses on the same property as the current parse 'p_name', this can be the root dpi directly or one serialized in properties_dict.
     If the root_dpi is not target and 'p_name' hasn't been serialized, target dpi holds a new instance and is used to serialize, this ensures that there's
@@ -1394,11 +1447,20 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
     }
   }
 
-  current_d_properties.insert(p_name);
   Ref<DynamicPropertyInfo> serialized_dpi = target_dpi->duplicate(true);
   serialized_dpi->is_root = false;
   serialized_dpi->properties_dict.clear();
-  root_dpi->properties_dict[p_name] = serialized_dpi; /** @todo old removed props will still be serialized */
+  root_dpi->properties_dict[p_name] = serialized_dpi;
+  current_d_properties.insert(p_name);
+
+  /** 
+    Apply a normalzation for types that hold values that might not be valid anymore and are not necesarilly selected i.e. NodePath pointing to a no longer existent node.
+  */
+  // Ref<DynamicPropertyInfo> previous = root_dpi->properties_dict.get(p_name, nullptr);
+  // if (previous.is_valid()) {
+  //   Variant normalized = normalize_value(previous->get_property_info(), p_object);
+  //   p_object->set(p_name, normalized);
+  // }
   
   /**
     Internally, when instantiating a property editor Godot checks every plugin's can handle, if true parses property again.
@@ -1472,18 +1534,24 @@ void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
   }
 
   /**
-    Clear properties no longer available from root dpi.
+    Clear properties no longer available from root dpi. @todo If a no longer available property is still selected, remove it
   */
+  bool props_removed = false;
   if (root_dpi.is_valid()) {
     Array keys = root_dpi->properties_dict.keys();
     for (int i = 0; i < keys.size() ; i++) {
       if (not current_d_properties.has(StringName(keys[i]))) {
-        root_dpi->properties_dict.erase(keys[i]); /** @todo For some reason is necessary to update twice before this entry is actually gone */
+        root_dpi->properties_dict.erase(keys[i]);
+        props_removed = true;
       }
     }
   }
 
-  debug_print_rich(vformat(COLOR_GREEN("%s - Inspector updated by %s"), p_object, this->get_class_static()));
+  if (props_removed) {
+    p_object->call_deferred("notify_property_list_changed");
+  } else {
+    debug_print_rich(vformat(COLOR_GREEN("%s - Inspector updated by %s"), p_object, this->get_class_static()));
+  }
 }
 
 #pragma endregion DPInfoInspectorPlugin
@@ -1503,3 +1571,4 @@ void DynamicPropertyInfoEditorPlugin::_exit_tree() {
 }
 
 #pragma endregion DPInfoEditorPlugin
+
