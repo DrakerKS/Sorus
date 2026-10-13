@@ -396,7 +396,7 @@ static Variant normalize_global_dir(const PropertyInfo &p_property_info, const V
     Null variant if the Resource does not match any hint string resource type.
 */
 static Variant normalize_resource_type(const PropertyInfo &p_property_info, const Variant &p_value) {
-  Ref<Resource> out = p_value;
+  Ref<Resource> out {p_value};
   if (out.is_null()) {
     return {};
   }
@@ -415,7 +415,21 @@ static Variant normalize_resource_type(const PropertyInfo &p_property_info, cons
   return {};
 }
 
-static Variant normalize_type_string(const PropertyInfo &p_property_info, const Variant &p_value, const Node *p_node_context, Array *r_removed_indexes = nullptr) {
+/** @note Reviewed+ 
+  @brief
+    Normalizes a value according to a PROPERTY_HINT_TYPE_STRING definition.
+
+  @returns
+    For String: Original value if it matches a registered ClassDB class in the hint string, null otherwise.
+  @returns
+    For Array: Normalized Array with invalid elements removed and salvageable elements normalized.
+  @returns
+    For Dictionary: Normalized Dictionary with invalid keys or values removed. Unsuitable keys are removed, values normalized.
+
+  @param r_removed_indexes
+    Optional output Array containing the original indexes of removed elements from an Array.
+*/
+static Variant normalize_type_string(const PropertyInfo &p_property_info, const Variant &p_value, const Node *p_node_context, Array *r_removed_indexes = nullptr, bool p_remove_if_normalized = false) {
   Variant::Type type = p_property_info.type;
   
   /**
@@ -441,10 +455,7 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
 
   if (type == Variant::ARRAY) {
     PropertyInfo pi {hint_string_to_pi(p_property_info.hint_string)};
-    Array array {}; 
-    array.append_array(p_value);
-    
-    print_line(vformat("FLAG >>> %s/%s:%s - %s", pi.type, pi.hint, pi.hint_string, array));
+    Array array = p_value.duplicate();
 
     int deleted = 0;
     int size = array.size();
@@ -452,10 +463,8 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
       pi.name = p_property_info.name + vformat("[%s]", i);
       Variant curr_normalized = normalize_value(pi, array[i - deleted], p_node_context, true);
       
-      print_line(vformat("FLAG A [%s] >>> %s", i, curr_normalized));
-      if (curr_normalized.get_type() == Variant::NIL) {
+      if ((curr_normalized.get_type() == Variant::NIL && pi.type != Variant::OBJECT) || (p_remove_if_normalized && curr_normalized != array[i - deleted])) {
         array.remove_at(i - deleted++);
-        print_line(vformat("FLAG B [%s] >>> %s", i, array));
         if (r_removed_indexes) {
           r_removed_indexes->push_back(i);
         }
@@ -470,28 +479,33 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
   if (type == Variant::DICTIONARY) {
     Dictionary dict {p_value};
     int key_val_separator = p_property_info.hint_string.find(";");
-    
+    if (key_val_separator < 0) {
+      return {p_value};
+    }
+
+    Array keys = dict.keys();
+    Array values {};
+    Array removed_indexes {};
+
     /** Key side */
-    Array keys {};
-    keys.append_array(dict.keys());
-    
     PropertyInfo pi_keys {
       Variant::ARRAY, 
       p_property_info.name + String(":keys"),
       PROPERTY_HINT_TYPE_STRING,
       p_property_info.hint_string.substr(0, key_val_separator)
     };
-    
-    Array removed_indexes {};
-    normalize_type_string(pi_keys, keys, p_node_context, &removed_indexes);
-    
+
+    normalize_type_string(pi_keys, keys, p_node_context, &removed_indexes, true);
+
     for (int idx : removed_indexes) {
       dict.erase(keys[idx]);
     }
-    
+
     /** Value side */
-    Array values {};
-    for (const Variant &key : dict.keys()) values.push_back(dict[key]);
+    keys = dict.keys();
+    for (const Variant &key : keys) values.push_back(dict[key]);
+    int normalized_idx = 0;
+    removed_indexes.clear();
     
     PropertyInfo pi_values {
       Variant::ARRAY, 
@@ -500,11 +514,14 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
       p_property_info.hint_string.substr(key_val_separator + 1)
     };
     
-    removed_indexes.clear();
-    normalize_type_string(pi_values, values, p_node_context, &removed_indexes);
+    values = normalize_type_string(pi_values, values, p_node_context, &removed_indexes);
     
-    for (int idx : removed_indexes) {
-      dict.erase(dict.keys()[idx]);
+    for (int i = 0; i < keys.size(); i++) {
+      if (removed_indexes.has(i)) {
+        dict.erase(keys[i]);
+      } else {
+        dict[keys[i]] = values[normalized_idx++];
+      }
     }
     
     return {dict};
@@ -703,7 +720,7 @@ static Variant normalize_value(
     }
   }
   
-  if (p_type_strict && p_value.get_type() != pi.type) {
+  if (p_type_strict && p_value.get_type() != pi.type && p_value.get_type() != Variant::NIL) {
     return {};
   }
 
