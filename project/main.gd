@@ -1,6 +1,7 @@
 # main.gd
 extends Node3D
 
+@export_custom(PROPERTY_HINT_TYPE_STRING, "BoxShape3D") var foo : String
 @onready var player = $World/PlayerPivot/Player
 @onready var camera = $World/CameraPivot
 

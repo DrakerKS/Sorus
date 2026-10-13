@@ -163,7 +163,7 @@ static String normalize_hint_string(const PropertyInfo &p_property_info, bool is
     return out;
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief 
     From a hint string "min,max,step" and optionally "...,or_greater" and/or "...,or_less" (other possible entries don't matter for this operation)
     takes min and max value and ensures p_value is within this range. The "or_less" and "or_greater" entries respectively remove the min and max restrictions.
@@ -198,7 +198,7 @@ static Variant normalize_range(const PropertyInfo &p_property_info, const Varian
     if (not hint_string_entries[0].JOIN(is_valid,m_type)() || not hint_string_entries[1].JOIN(is_valid,m_type)()) { \
       return {}; \
     } \
-    if (p_value == Variant()) { \
+    if (p_value.get_type() == Variant::NIL) { \
       return hint_string_entries[1].JOIN(to,m_type)(); \
     } \
     m_type min = (hint_string_entries.has("or_less"))? (m_type)p_value : hint_string_entries[0].JOIN(to,m_type)(); \
@@ -215,12 +215,12 @@ static Variant normalize_range(const PropertyInfo &p_property_info, const Varian
   #undef NORMALIZE_TYPE
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief 
     From a hint string "Op1,Op2,Op3:Op3Val,Op4,..." ensures p_value is equal to one of these values. Follows Godot's rules for Enum:hint_string formatting.
 
   @returns 
-    Null variant if hint string is invalid.  
+    Null variant if hint string is empty.  
   @returns 
     Same value if suitable.
   @returns
@@ -240,7 +240,7 @@ static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant
       return {p_value};
     }
 
-    return first_entry;
+    return (p_property_info.type == Variant::STRING_NAME)? Variant(StringName(first_entry)) : Variant(first_entry);
   }
 
   int64_t last_visited;
@@ -270,7 +270,7 @@ static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant
   return {first_entry_numeric};
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief
     From a hint string optionally containing "positive_only" ensures p_value is not negative.
 
@@ -285,15 +285,15 @@ static Variant normalize_exp_easing(const PropertyInfo &p_property_info, const V
     return {0.0};
   }
 
-  return {(float)p_value};
+  return {p_value};
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief
     From a hint string "Bit0,Bit1,Bit2:Bit2Val,Bit3,..." ensures p_value only contains known bits. Follows Godot's rules for Flags:hint_string formatting.
 
   @returns
-    Same value if the hint string is empty.
+    Null variant if the hint string is empty.
   @returns
     Same value with unknown bits masked out.
 
@@ -301,10 +301,10 @@ static Variant normalize_exp_easing(const PropertyInfo &p_property_info, const V
     If Bit32 is reached in the hint string, this and following entries must specify a value (BitN:val), otherwise they will be ignored.
 */
 static Variant normalize_flags(const PropertyInfo &p_property_info, const Variant &p_value) {
-  /** For flags hint string's entry position is absolute truth if no specific value is provided "A:16,B,C" @A = 16, B = 2, C = 4 */
+  /** For flags hint string's entry position is absolute truth if no specific value is provided "a:16,b,c" a = 16, b = 2, c = 4 */
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
   if (hint_string_entries.is_empty()) {
-    return {p_value};
+    return {};
   }
 
   uint32_t current_bit = 0;
@@ -326,7 +326,7 @@ static Variant normalize_flags(const PropertyInfo &p_property_info, const Varian
   return {(uint32_t)p_value & allowed_bits};
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief
     From a hint string containing file name filters such as "*.png,*.jpg" ensures p_value contains a valid file name matching one of the filters. If p_global is true, also ensures the path is absolute.
 
@@ -336,7 +336,7 @@ static Variant normalize_flags(const PropertyInfo &p_property_info, const Varian
     Null variant if p_global is true and the path is not absolute, if the file name is invalid, or if the file name does not match any hint string filter.
 */
 static Variant normalize_file(const PropertyInfo &p_property_info, const Variant &p_value, bool p_global = false) {
-  String path = (String)p_value;
+  String path = (String)p_value.duplicate();
   if (path.begins_with("uid://")) {
     path = ResourceUID::uid_to_path(path);
   }
@@ -364,7 +364,7 @@ static Variant normalize_file(const PropertyInfo &p_property_info, const Variant
   return {};
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief
     Ensures p_value is an absolute path.
 
@@ -381,7 +381,7 @@ static Variant normalize_global_dir(const PropertyInfo &p_property_info, const V
   return {};
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief
     From a hint string containing resource class names such as "Texture2D,ShaderMaterial" ensures p_value is a Resource whose class matches one of the specified types.
 
@@ -415,7 +415,7 @@ static Variant normalize_resource_type(const PropertyInfo &p_property_info, cons
   return {};
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief
     Normalizes a value according to a PROPERTY_HINT_TYPE_STRING definition.
 
@@ -455,7 +455,7 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
 
   if (type == Variant::ARRAY) {
     PropertyInfo pi {hint_string_to_pi(p_property_info.hint_string)};
-    Array array = p_value.duplicate();
+    Array array = p_value.duplicate(true);
 
     int deleted = 0;
     int size = array.size();
@@ -477,7 +477,7 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
   }
   
   if (type == Variant::DICTIONARY) {
-    Dictionary dict {p_value};
+    Dictionary dict = p_value.duplicate(true);
     int key_val_separator = p_property_info.hint_string.find(";");
     if (key_val_separator < 0) {
       return {p_value};
@@ -530,7 +530,7 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
   return {p_value};
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief
     From a hint string containing node class names such as "Node2D,Sprite2D" ensures p_value points to an existing Node whose class matches one of the specified types.
 
@@ -576,7 +576,7 @@ static Variant normalize_node_path_valid_types(const PropertyInfo &p_property_in
   return {};
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief
     Ensures p_value contains a locale identifier with a recognized language and, if present, a recognized script or country as its second component.
 
@@ -619,7 +619,7 @@ static Variant normalize_locale_id(const PropertyInfo &p_property_info, const Va
   return {p_value};
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief
     From a hint string containing node class names such as "Node,Node3D" ensures p_value is a Node whose class matches or inherits one of the specified types.
 
@@ -652,7 +652,7 @@ static Variant normalize_node_type(const PropertyInfo &p_property_info, const Va
   return {};
 }
 
-/** @note Reviewed+ 
+/** @note Reviewed++ 
   @brief
     Ensures p_value conforms to the input action restrictions specified by the hint string.
 
@@ -720,8 +720,13 @@ static Variant normalize_value(
     }
   }
   
-  if (p_type_strict && p_value.get_type() != pi.type && p_value.get_type() != Variant::NIL) {
-    return {};
+  /**
+    In this case Variant::NIL could mean "any type" in containers, so it doesn't make sense to be strict here.
+  */
+  if (p_type_strict && pi.type != Variant::NIL) {
+    if (p_value.get_type() != pi.type && p_value.get_type() != Variant::NIL) {
+      return {};
+    }
   }
 
   /** 
@@ -731,8 +736,7 @@ static Variant normalize_value(
   switch ((PropertyHint) pi.hint) {
     #define PASS_OR_NULL p_type_strict? Variant{} : p_value
     case PROPERTY_HINT_NONE:
-      /** Hint string is a visual suffix only, no need to normalize, any value could be valid. */
-      out = p_value;
+      out = p_value; /** No restrictions, no need to normalize. */
       break;
     case PROPERTY_HINT_RANGE:
       if (pi.type != Variant::INT && pi.type != Variant::FLOAT && pi.type != Variant::ARRAY) {
@@ -749,11 +753,10 @@ static Variant normalize_value(
       }
       break;
     case PROPERTY_HINT_ENUM_SUGGESTION:
-      /** Any value is valid, no need to normalize. */
       if (pi.type != Variant::STRING && pi.type != Variant::STRING_NAME) {
         out = PASS_OR_NULL;
       } else {
-        out = p_value;
+        out = p_value; /** Any value is valid, no need to normalize. */
       }
       break;
     case PROPERTY_HINT_EXP_EASING:
@@ -1001,6 +1004,7 @@ static Variant normalize_value(
     case PROPERTY_HINT_MAX:
       WARN_PRINT("Attempted to normalize a value using \"PROPERTY_HINT_MAX\" hint. Input 'p_value' is returned.");
       out = p_value;
+    #undef PASS_OR_NULL
   }
 
   if (out.get_type() == Variant::NIL) {
@@ -1011,10 +1015,6 @@ static Variant normalize_value(
     out = get_variant_default_value(pi.type);
   }
 
-  if (p_type_strict && out.get_type() != pi.type) {
-    return {};
-  }
-
   if (out == p_value) {
     return out;
   }
@@ -1023,12 +1023,12 @@ static Variant normalize_value(
     debug_print_rich(vformat(
       COLOR_GREEN("Normalized >>> Property '%s' value to '%s'"), 
       pi.name, out
-    ));
+    ), true);
   } else {
     debug_print_rich(vformat(
       COLOR_GREEN("Normalized >>> Property '%s' value from '%s' to '%s' since previous value was no longer suitable"), 
       pi.name, p_value, out
-    ));
+    ), true);
   }
 
   return out;
