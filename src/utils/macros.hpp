@@ -102,7 +102,8 @@ inline constexpr bool is_one_of_v = (std::is_same_v<T, TValidTypes> || ...);
     public: \
       static constexpr const char JOIN(member,m_member)[] = STR(m_member); \
       void SORUS_SETTER_TOKEN(m_member)(m_type P_TOKEN(m_member)); \
-      m_type SORUS_GETTER_TOKEN(m_member)() const;
+      m_type SORUS_GETTER_TOKEN(m_member)() const; \
+    private:
 
 #define SORUS_DECL_STATIC(m_type, m_member) \
     private: \
@@ -110,7 +111,8 @@ inline constexpr bool is_one_of_v = (std::is_same_v<T, TValidTypes> || ...);
     public: \
       static constexpr const char JOIN(member,m_member)[] = STR(m_member); \
       static void SORUS_SETTER_TOKEN(m_member)(m_type P_TOKEN(m_member)); \
-      static m_type SORUS_GETTER_TOKEN(m_member)();
+      static m_type SORUS_GETTER_TOKEN(m_member)(); \
+    private:
 
 #define SORUS_MEMBER_CHECK(m_member) \
   static_cast<void>(sizeof(((self_type*)nullptr)->m_member))

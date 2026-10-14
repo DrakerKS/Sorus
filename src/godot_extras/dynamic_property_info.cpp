@@ -25,7 +25,7 @@ using namespace godot;
 #pragma region HelperFunctions
 
 static Variant normalize_value(const PropertyInfo &p_property_info, const Variant &p_value = nullptr, const Node * p_node_context = nullptr, bool p_type_strict = false);
-static String normalize_hint_string(const PropertyInfo &p_property_info, bool is_main_call = true);
+static String normalize_hint_string(const PropertyInfo &p_property_info, bool p_verbose = true);
 
 /** @note Reviewed */
 static PropertyInfo hint_string_to_pi(const String &p_hint_string) {
@@ -76,7 +76,7 @@ static PropertyInfo hint_string_to_pi(const String &p_hint_string) {
   @note
     Spaces are removed from the resulting hint string. Debug output is printed only for the main call, not recursive calls.
 */
-static String normalize_hint_string(const PropertyInfo &p_property_info, bool is_main_call /* = true */) {
+static String normalize_hint_string(const PropertyInfo &p_property_info, bool p_verbose /* = true */) {
   if (p_property_info.type != Variant::ARRAY && p_property_info.type != Variant::DICTIONARY) {
     return p_property_info.hint_string;
   }
@@ -156,7 +156,7 @@ static String normalize_hint_string(const PropertyInfo &p_property_info, bool is
 
   PRINT_AND_RET:
     out = out.remove_chars(" ");
-    if (is_main_call) {
+    if (p_verbose) {
       debug_print_rich(vformat(COLOR_GREEN("Normalized >>> Hint string from '%s' to '%s'"), p_hint_string, out));
     }
 
@@ -199,7 +199,7 @@ static Variant normalize_range(const PropertyInfo &p_property_info, const Varian
       return {}; \
     } \
     if (p_value.get_type() == Variant::NIL) { \
-      return hint_string_entries[1].JOIN(to,m_type)(); \
+      return hint_string_entries[0].JOIN(to,m_type)(); \
     } \
     m_type min = (hint_string_entries.has("or_less"))? (m_type)p_value : hint_string_entries[0].JOIN(to,m_type)(); \
     m_type max = (hint_string_entries.has("or_greater"))? (m_type)p_value : hint_string_entries[1].JOIN(to,m_type)(); \
@@ -624,7 +624,7 @@ static Variant normalize_locale_id(const PropertyInfo &p_property_info, const Va
     From a hint string containing node class names such as "Node,Node3D" ensures p_value is a Node whose class matches or inherits one of the specified types.
 
   @returns
-    Null variant if p_value cannot be cast to a Node.
+    Null variant if p_value cannot be cast to a Node or if the node cannot be accessed through p_node_context.
   @returns
     Same value if the hint string is empty.
   @returns
@@ -632,9 +632,13 @@ static Variant normalize_locale_id(const PropertyInfo &p_property_info, const Va
   @returns
     Null variant if the Node does not match any hint string node type.
 */
-static Variant normalize_node_type(const PropertyInfo &p_property_info, const Variant &p_value) {
-  Node *node = Object::cast_to<Node>((Object*)p_value);
-  if (node == nullptr) {
+static Variant normalize_node_type(const PropertyInfo &p_property_info, const Variant &p_value, const Node* p_node_context) {
+  Node *node = Object::cast_to<Node>((Object*) p_value);
+  if (p_node_context == nullptr || node == nullptr) {
+    return {};
+  }
+
+  if (not p_node_context->has_node(node->get_path())) {
     return {};
   }
 
@@ -705,12 +709,7 @@ static Variant normalize_input_name(const PropertyInfo &p_property_info, const V
     If the hint string contains spaces the behavior is undefined. Unless it makes sense for the hint string to have spaces like String/Enum where each value could
     be represented by multiple words, in this cases behavior is well defined. Type Array and Dictionary already had spaces removed during normalization.
 */
-static Variant normalize_value(
-  const PropertyInfo &p_property_info, 
-  const Variant &p_value, 
-  const Node *p_node_context /* = nullptr*/,
-  bool p_type_strict /* = false */
-) {
+static Variant normalize_value(const PropertyInfo &p_property_info,  const Variant &p_value,  const Node *p_node_context /* = nullptr*/, bool p_type_strict /* = false */) {
   Variant out {};
 
   PropertyInfo pi {p_property_info};
@@ -952,7 +951,7 @@ static Variant normalize_value(
       if (pi.type != Variant::OBJECT) {
         out = PASS_OR_NULL;
       } else {
-        out = normalize_node_type(pi, p_value);
+        out = normalize_node_type(pi, p_value, p_node_context);
       }
       break;
     case PROPERTY_HINT_HIDE_QUATERNION_EDIT:
@@ -1172,8 +1171,7 @@ void DynamicPropertyInfo::_bind_methods() {
   SORUS_BIND_PROPERTY_FLAGS(usage, get_property_usage_flags_hint_string(DEFAULT_NAME_TYPE));
 
   ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Properties", "");
-  SORUS_BIND_PROPERTY_DICTIONARY(
-    properties_dict,
+  SORUS_BIND_PROPERTY_DICTIONARY(properties_dict,
     vformat(
       "%d:;%d/%d:%s", 
       Variant::Type::STRING_NAME,
@@ -1185,33 +1183,13 @@ void DynamicPropertyInfo::_bind_methods() {
   );
 
   ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Settings", "");
-  SORUS_BIND_PROPERTY_ENUM(
-    values_name_type,
-    get_values_name_type_hint_string()
-  );
+  SORUS_BIND_PROPERTY_ENUM(values_name_type, get_values_name_type_hint_string());
 }
 
 void DynamicPropertyInfo::_validate_property(PropertyInfo &p_property) const {
   StringName name = p_property.name;
 
-  static HashSet<StringName> to_validate = {
-    member_type, 
-    member_property_select, 
-    member_hint, 
-    member_hint_string,
-    member_usage,
-    member_properties_dict,
-    member_values_name_type
-  };
-
-  if (not to_validate.has(name)) {
-    return;
-  }
-
-  // if (is_root) {
-  //   debug_print_rich(vformat("VALIDATE >>> %s[%s]", this, p_property.name), true);
-  // }
-
+  /** Config hint strings for any DPI */
   if (name == StringName{member_type}) {
     p_property.hint_string = get_variant_type_hint_string((ValueNameType)values_name_type);
   } else if (name == StringName{member_hint}) {
@@ -1220,23 +1198,25 @@ void DynamicPropertyInfo::_validate_property(PropertyInfo &p_property) const {
     p_property.hint_string = get_property_usage_flags_hint_string((ValueNameType)values_name_type);
   }
 
+  /** Exclude dictionary and name type selector for dictionary's DPIs only, make everything else read only */
   if (not is_root) {
     if (name == StringName{member_properties_dict} || name == StringName{member_values_name_type}) {
       p_property.usage = PROPERTY_USAGE_NONE;
-    } else if (name != StringName{member_values_name_type}) {
+    } else {
       p_property.usage |= PROPERTY_USAGE_READ_ONLY;
     }
     return;
   }
 
+  /** In root DPI make everything but property selector read only if no current selection */
   if (name != StringName(member_property_select)) {
-    if (this->get_property_select() == StringName{PLACEHOLDER_PROPERTY_SELECT}) {
+    if (this->property_select == StringName{PLACEHOLDER_PROPERTY_SELECT}) {
       p_property.usage = p_property.usage | PROPERTY_USAGE_READ_ONLY;
     }
-
     return;
   }
 
+  /** If root DPI fill the property selector with the detected dynamic properties */
   p_property.hint_string = get_property_names_hint_string();
 }
 
@@ -1246,14 +1226,6 @@ String DynamicPropertyInfo::_to_string() const {
     this->get_parent_class_static(), 
     String::num_uint64(get_instance_id())
   );
-}
-
-void DynamicPropertyInfo::set_properties_dict(Dictionary p_properties_dict) {
-  properties_dict = p_properties_dict;
-}
-
-Dictionary DynamicPropertyInfo::get_properties_dict() const {
-  return properties_dict;
 }
 
 String DynamicPropertyInfo::get_property_names_hint_string() const {
@@ -1270,12 +1242,26 @@ String DynamicPropertyInfo::get_property_names_hint_string() const {
 
   return out;
 }
+
+PropertyInfo DynamicPropertyInfo::get_property_info(bool p_canonical_hint_string, bool p_verbose) {
+  PropertyInfo property_info {
+    type,
+    property_select,
+    static_cast<PropertyHint>(hint),
+    hint_string,
+    usage
+  };
+
+  if (p_canonical_hint_string) {
+    property_info.hint_string = normalize_hint_string(property_info, p_verbose);
+  }
+
+  return property_info;
+}
   
   #pragma region ::Setters & Getters
     #define DPI_SETTER(m_type, m_member) \
       void DynamicPropertyInfo::SORUS_SETTER_TOKEN(m_member)(m_type P_TOKEN(m_member)) { \
-        if (m_member == P_TOKEN(m_member)) \
-          return; \
         m_member = P_TOKEN(m_member); \
       } END_MACRO()
 
@@ -1284,26 +1270,30 @@ String DynamicPropertyInfo::get_property_names_hint_string() const {
         return static_cast<m_type>(m_member); \
       } END_MACRO()
 
-      DPI_SETTER(Variant::Type, type);
-      DPI_GETTER(Variant::Type, type);
-
       void DynamicPropertyInfo::set_property_select(StringName p_property_select) {
         if (property_select == p_property_select) {
           return;
         }
         property_select = p_property_select;
 
-        Ref<DynamicPropertyInfo> serialized_dpi = 
+        if (p_property_select == StringName(DynamicPropertyInfo::PLACEHOLDER_PROPERTY_SELECT)) {
+          type = Variant::NIL;
+          hint = PROPERTY_HINT_NONE;
+          hint_string = "";
+          usage = PROPERTY_USAGE_DEFAULT;
+        } else {
+          Ref<DynamicPropertyInfo> serialized_dpi = 
           properties_dict.get(
             p_property_select, 
             nullptr
           );
 
-        if (serialized_dpi.is_valid()) {
-          type = serialized_dpi->get_type();
-          hint = serialized_dpi->get_hint();
-          hint_string = serialized_dpi->get_hint_string();
-          usage = serialized_dpi->get_usage();
+          if (serialized_dpi.is_valid()) {
+            type = serialized_dpi->type;
+            hint = serialized_dpi->hint;
+            hint_string = serialized_dpi->hint_string;
+            usage = serialized_dpi->usage;
+          }
         }
 
         if (is_root) {
@@ -1315,6 +1305,9 @@ String DynamicPropertyInfo::get_property_names_hint_string() const {
         return property_select;
       }
 
+      DPI_SETTER(Variant::Type, type);
+      DPI_GETTER(Variant::Type, type);
+
       DPI_SETTER(uint32_t, hint);
       DPI_GETTER(uint32_t, hint);
 
@@ -1324,6 +1317,10 @@ String DynamicPropertyInfo::get_property_names_hint_string() const {
       DPI_SETTER(uint32_t, usage);
       DPI_GETTER(uint32_t, usage);
 
+      DPI_SETTER(Dictionary, properties_dict);
+      DPI_GETTER(Dictionary, properties_dict);
+
+      /** @todo Try static again */
       void DynamicPropertyInfo::set_values_name_type(int p_name_type) {
         if (values_name_type == p_name_type) {
           return;
@@ -1372,11 +1369,7 @@ void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object
       return;
     }
 
-    PropertyInfo root_pi = root_dpi->get_property_info();
-    if (root_dpi->hint_string != previous->hint_string) {
-      root_dpi->canonical_hint_string = normalize_hint_string(root_pi);
-    }
-    root_pi.hint_string = root_dpi->canonical_hint_string;
+    PropertyInfo root_pi = root_dpi->get_property_info(true, true);
 
     if (root_dpi->type != previous->type) {
       Variant new_value = normalize_value(root_pi);
@@ -1393,7 +1386,7 @@ void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object
 bool DynamicPropertyInfoInspectorPlugin::_can_handle(Object *p_object) const {
   bool can_handle = false;
   bool due_to_guard = false;
-
+  
   if (p_object == nullptr) {
     goto RET;
   }
@@ -1435,10 +1428,6 @@ void DynamicPropertyInfoInspectorPlugin::_parse_begin(Object *p_object) {
     p_object->set(root_dpi_name, root_dpi);
   }
 
-  if (root_dpi->canonical_hint_string.is_empty()) {
-    root_dpi->canonical_hint_string = normalize_hint_string(root_dpi->get_property_info());
-  }
-
   Callable bound_callable = callable_mp_static(&DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed).bind(p_object, root_dpi);
   if (not root_dpi->is_connected(SIGNAL(root_dpi, changed), bound_callable)) {
     root_dpi->connect(SIGNAL(root_dpi, changed), bound_callable);
@@ -1464,9 +1453,9 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
     If multiple DPIs are present only one can work with the plugin so olders are disconnected, and the newest is connected. Aside from that DPIs are not parsed.
     @todo maybe change this to check if the current one is still valid, change it only if no longer valid.
   */
-  Ref<Resource> prop = p_object->get(p_name);
-  if (prop.is_valid() && prop->is_class(DynamicPropertyInfo::get_class_static())) {
-    Ref<DynamicPropertyInfo> extra_dpi = prop;
+  Ref<Resource> res_prop = p_object->get(p_name);
+  if (res_prop.is_valid() && res_prop->is_class(DynamicPropertyInfo::get_class_static())) {
+    Ref<DynamicPropertyInfo> extra_dpi = res_prop;
 
     // ----- Extra dpi EditorProperty test for foreign plugins -----
     // if (p_name == root_dpi_name) {
@@ -1501,35 +1490,25 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
     return false;
   }
 
-  debug_print_rich(vformat("PARSE PROPERTY >>> %s", p_name), true);
-
   /**
     Target dpi is the one that focuses on the same property as the current parse 'p_name', this can be the root dpi directly or one serialized in properties_dict.
     If the root_dpi is not target and 'p_name' hasn't been serialized, target dpi holds a new instance and is used to serialize, this ensures that there's
     property information available for properties that haven't even been edited yet, so when changing the selection empty property information is used.
   */
   Ref<DynamicPropertyInfo> target_dpi {root_dpi};
-  if (p_name != root_dpi->get_property_select()) {
-    target_dpi = root_dpi->get_properties_dict().get(p_name, nullptr);
+  if (p_name != root_dpi->property_select) {
+    target_dpi = root_dpi->properties_dict.get(p_name, nullptr);
+
     if (target_dpi.is_null()) {
       target_dpi = Ref<DynamicPropertyInfo>(memnew(DynamicPropertyInfo({Variant::NIL, p_name})));
     }
   }
 
-  Ref<DynamicPropertyInfo> serialized_dpi = target_dpi->duplicate(true);
-  serialized_dpi->is_root = false;
-  serialized_dpi->properties_dict.clear();
-  root_dpi->properties_dict[p_name] = serialized_dpi;
-  current_d_properties.insert(p_name);
-
   /** 
     Apply a normalzation for types that hold values that might not be valid anymore and are not necesarilly selected i.e. NodePath pointing to a no longer existent node.
   */
-  // Ref<DynamicPropertyInfo> previous = root_dpi->properties_dict.get(p_name, nullptr);
-  // if (previous.is_valid()) {
-  //   Variant normalized = normalize_value(previous->get_property_info(), p_object);
-  //   p_object->set(p_name, normalized);
-  // }
+  PropertyInfo target_pi = target_dpi->get_property_info(true);
+  p_object->set(p_name, normalize_value(target_pi, p_object->get(p_name), Object::cast_to<Node>(p_object)));
   
   /**
     Internally, when instantiating a property editor Godot checks every plugin's can handle, if true parses property again.
@@ -1539,21 +1518,26 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
     @see https://github.com/godotengine/godot/blob/65e8d16951d6963cb3984c090e45f40d1ba5f704/editor/inspector/editor_inspector.cpp#L4006
   */
   creating_native_editor() = true;
-  
-  EditorProperty *editor = EditorInspector::instantiate_property_editor(
-    p_object,
-    target_dpi->get_type(), 
-    p_name, 
-    static_cast<PropertyHint>(target_dpi->get_hint()),
-    target_dpi->canonical_hint_string,
-    target_dpi->get_usage(),
-    p_wide
-  );
+    EditorProperty *editor = EditorInspector::instantiate_property_editor(
+      p_object,
+      target_pi.type, 
+      p_name, 
+      static_cast<PropertyHint>(target_pi.hint),
+      target_pi.hint_string,
+      target_pi.usage,
+      p_wide
+    );
 
+    editor->set_object_and_property(p_object, p_name);
+    this->add_property_editor(p_name, editor);
   creating_native_editor() = false;
 
-  editor->set_object_and_property(p_object, p_name);
-  this->add_property_editor(p_name, editor);
+  Ref<DynamicPropertyInfo> serialized_dpi = target_dpi->duplicate(true);
+  serialized_dpi->is_root = false;
+  serialized_dpi->properties_dict.clear();
+  root_dpi->properties_dict[p_name] = serialized_dpi;
+
+  current_d_properties.insert(p_name);
 
   debug_print_rich(vformat(
     COLOR_GREEN("Dynamic property '%s' updated in '%s::%s' instance"), p_name, p_object, root_dpi),
@@ -1603,20 +1587,30 @@ void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
   }
 
   /**
-    Clear properties no longer available from root dpi. @todo If a no longer available property is still selected, remove it
+    Clear properties no longer available from root dpi.
   */
-  bool props_removed = false;
+  bool req_refresh = false;
   if (root_dpi.is_valid()) {
     Array keys = root_dpi->properties_dict.keys();
     for (int i = 0; i < keys.size() ; i++) {
       if (not current_d_properties.has(StringName(keys[i]))) {
         root_dpi->properties_dict.erase(keys[i]);
-        props_removed = true;
+        req_refresh = true;
       }
+    }
+
+    if (not current_d_properties.has(root_dpi->property_select) && root_dpi->property_select != StringName(DynamicPropertyInfo::PLACEHOLDER_PROPERTY_SELECT)) {
+      Array properties = root_dpi->properties_dict.keys();
+      if (properties.size() > 0) {
+        root_dpi->set_property_select(properties[0]);
+      } else {
+        root_dpi->set_property_select(DynamicPropertyInfo::PLACEHOLDER_PROPERTY_SELECT);
+      }
+      req_refresh = true;
     }
   }
 
-  if (props_removed) {
+  if (req_refresh) {
     p_object->call_deferred("notify_property_list_changed");
   } else {
     debug_print_rich(vformat(COLOR_GREEN("%s - Inspector updated by %s"), p_object, this->get_class_static()));

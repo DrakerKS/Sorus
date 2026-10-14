@@ -29,13 +29,8 @@ namespace godot {
     GDCLASS(DynamicPropertyInfo, Resource);
 
     friend class DynamicPropertyInfoInspectorPlugin;
-    friend class DynamicEditorProperty;
 
     private:
-      bool is_root = false;
-      static const constexpr ValueNameType DEFAULT_NAME_TYPE = VALUE_NAME_PASCAL;
-      static constexpr const char * PLACEHOLDER_PROPERTY_SELECT = "Select";
-
       SORUS_DECL(Variant::Type, type, Variant::NIL);
       SORUS_DECL(StringName, property_select, PLACEHOLDER_PROPERTY_SELECT);
       SORUS_DECL(uint32_t, hint, PROPERTY_HINT_NONE);
@@ -44,7 +39,6 @@ namespace godot {
       SORUS_DECL(Dictionary, properties_dict); /*<[StringName, Ref<DynamicPropertyInfo>]>*/
       SORUS_DECL(int, values_name_type, DEFAULT_NAME_TYPE);
 
-      String canonical_hint_string {};
       String get_property_names_hint_string () const;
 
     protected:
@@ -53,20 +47,13 @@ namespace godot {
       String _to_string() const;
 
     public:
-      /** @deprecated property_info is no longer a property, use get_property_info instead */
-      static constexpr const char *MEMBER_PROPERTY_INFO = "property_info";
+      static constexpr const ValueNameType DEFAULT_NAME_TYPE = VALUE_NAME_PASCAL;
+      static constexpr const char *MEMBER_PROPERTY_INFO = "property_info"; /** @deprecated property_info is no longer a property, use get_property_info instead */
+      static constexpr const char * PLACEHOLDER_PROPERTY_SELECT = "Select";
 
-      PropertyInfo get_property_info(){
-        PropertyInfo property_info {
-          type,
-          property_select,
-          static_cast<PropertyHint>(hint),
-          hint_string,
-          usage
-        };
+      bool is_root = false;
 
-        return property_info;
-      }
+      PropertyInfo get_property_info(bool p_canonical_hint_string, bool p_verbose = false);
 
       DynamicPropertyInfo(PropertyInfo p_property_info): 
         type {p_property_info.type}, 
