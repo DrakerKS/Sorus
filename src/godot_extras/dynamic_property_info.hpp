@@ -18,6 +18,7 @@
 #include "godot_cpp/templates/hash_map.hpp"
 
 #include "utils/macros.hpp"
+#include <cstddef>
 
 namespace godot {
 
@@ -80,28 +81,51 @@ namespace godot {
       static void _bind_methods() { }
 
     private:
-      Ref<DynamicPropertyInfo> root_dpi {};
-      StringName root_dpi_name {};
-      HashSet<StringName> current_d_properties {};
-
       static constexpr const char STD_DYNAMIC_PROP_PREFIX[] = "d_";
+
+      struct ObjectParseContext {
+        Ref<DynamicPropertyInfo> root_dpi {};
+        StringName root_dpi_name {};
+        HashSet<StringName> current_parsed_properties {};
+        EditorProperty *editor_property {};
+      };
+
+      HashMap<ObjectID, ObjectParseContext> object_parse_context_map {};
+      bool map_cleared = false;
+
+      /** 
+        @todo 
+          Remove those entries whose 'ObjectDB::get_instance(id)' returns nullptr.
+          Maybe onece each parse, or some other mechanism.
+      */
 
       static bool &creating_native_editor() {
         static thread_local bool value = false;
         return value;
       }
 
+      static bool find_root_dpi(
+        const Object *p_object, 
+        Ref<DynamicPropertyInfo> *r_dpi = nullptr, 
+        StringName *r_dpi_name = nullptr
+      );
+
+      static void find_inspector_property_editors(
+        HashMap<ObjectID, ObjectParseContext> &p_object_parse_context_map
+      );
+
+      void normalize_property(
+        Object *p_object,
+        const Ref<DynamicPropertyInfo> &p_dpi
+      );
+
       static void on_dynamic_property_info_changed(
         Object *p_object, 
         const Ref<DynamicPropertyInfo> &root_dpi
       );
 
-      void on_submit();
-
-      void normalize_property(
-        StringName p_property_name,
-        Object *p_object,
-        const Ref<DynamicPropertyInfo> &p_dpi
+      void on_submit(
+        const Ref<DynamicPropertyInfo> p_root_dpi
       );
 
       void on_property_changed(
