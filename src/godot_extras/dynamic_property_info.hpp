@@ -37,6 +37,7 @@ namespace godot {
       SORUS_DECL(String, hint_string);
       SORUS_DECL(uint32_t, usage, PROPERTY_USAGE_DEFAULT);
       SORUS_DECL(Dictionary, properties_dict); /*<[StringName, Ref<DynamicPropertyInfo>]>*/
+      
       SORUS_DECL(int, values_name_type, DEFAULT_NAME_TYPE);
 
       String get_property_names_hint_string () const;
@@ -79,7 +80,7 @@ namespace godot {
       static void _bind_methods() { }
 
     private:
-      Ref<DynamicPropertyInfo> root_dpi {nullptr};
+      Ref<DynamicPropertyInfo> root_dpi {};
       StringName root_dpi_name {};
       HashSet<StringName> current_d_properties {};
 
@@ -95,7 +96,22 @@ namespace godot {
         const Ref<DynamicPropertyInfo> &root_dpi
       );
 
-      void _on_submit();
+      void on_submit();
+
+      void normalize_property(
+        StringName p_property_name,
+        Object *p_object,
+        const Ref<DynamicPropertyInfo> &p_dpi
+      );
+
+      void on_property_changed(
+        StringName p_property_name, 
+        Variant p_value, 
+        StringName p_field, 
+        bool changing, 
+        Object *p_object,
+        const Ref<DynamicPropertyInfo> &p_dpi
+      );
 
     public:
       bool _can_handle(Object *p_object) const override;

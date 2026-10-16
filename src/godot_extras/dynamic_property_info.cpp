@@ -18,6 +18,7 @@
 #include "utils/macros.hpp"
 #include "utils/error_macros.hpp"
 #include "utils/debug.hpp"
+#include <charconv>
 #include <cstdint>
 
 using namespace godot;
@@ -263,7 +264,7 @@ static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant
     }
 
     if ((int64_t)p_value == last_visited) {
-      return {p_value};
+      return {(int64_t)p_value};
     }
   }
 
@@ -281,11 +282,11 @@ static Variant normalize_enum(const PropertyInfo &p_property_info, const Variant
 */
 static Variant normalize_exp_easing(const PropertyInfo &p_property_info, const Variant &p_value) {
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",",false);
-  if (hint_string_entries.has("positive_only") && (float)p_value < 0) {
-    return {0.0};
+  if ((hint_string_entries.has("positive_only") && (float)p_value < 0)) {
+    return {0.0f};
   }
 
-  return {p_value};
+  return {(float)p_value};
 }
 
 /** @note Reviewed++ 
@@ -352,12 +353,12 @@ static Variant normalize_file(const PropertyInfo &p_property_info, const Variant
 
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
   if (hint_string_entries.is_empty()) {
-    return {p_value};
+    return {(String)p_value};
   }
 
   for (String &entry : hint_string_entries) {
     if (filename.match(entry)) {
-      return {p_value};
+      return {(String)p_value};
     }
   }
 
@@ -375,7 +376,7 @@ static Variant normalize_file(const PropertyInfo &p_property_info, const Variant
 */
 static Variant normalize_global_dir(const PropertyInfo &p_property_info, const Variant &p_value) {
   if (String(p_value).is_absolute_path()) {
-    return {p_value};
+    return {(String)p_value};
   }
 
   return {};
@@ -403,12 +404,12 @@ static Variant normalize_resource_type(const PropertyInfo &p_property_info, cons
 
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
   if (hint_string_entries.is_empty()) {
-    return {p_value};
+    return {(Object*)p_value};
   }
 
   for (String &entry : hint_string_entries) {
     if (out->is_class(entry)) {
-      return {p_value};
+      return {(Object*)p_value};
     }
   }
 
@@ -441,12 +442,12 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
   if (type == Variant::STRING) {
     PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
     if (hint_string_entries.is_empty()) {
-      return {p_value};
+      return {(String)p_value};
     }
 
     for (const String &entry : hint_string_entries) {
       if (String(p_value) == entry && ClassDBSingleton::get_singleton()->is_class(entry)) {
-        return {p_value};
+        return {(String)p_value};
       }
     }
 
@@ -463,14 +464,15 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
       pi.name = p_property_info.name + vformat("[%s]", i);
       Variant curr_normalized = normalize_value(pi, array[i - deleted], p_node_context, true);
       
-      if ((curr_normalized.get_type() == Variant::NIL && pi.type != Variant::OBJECT) || (p_remove_if_normalized && curr_normalized != array[i - deleted])) {
-        array.remove_at(i - deleted++);
-        if (r_removed_indexes) {
-          r_removed_indexes->push_back(i);
-        }
-      } else {
+      // if ((curr_normalized.get_type() == Variant::NIL && pi.type != Variant::OBJECT) || (p_remove_if_normalized && curr_normalized != array[i - deleted])) {
+      // if ((curr_normalized.get_type() == Variant::NIL && pi.type != Variant::OBJECT)) {
+      //   array.remove_at(i - deleted++);
+      //   if (r_removed_indexes) {
+      //     r_removed_indexes->push_back(i);
+      //   }
+      // } else {
         array.set(i - deleted, curr_normalized);
-      }
+      // }
     }
 
     return {array};
@@ -551,7 +553,7 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
 static Variant normalize_node_path_valid_types(const PropertyInfo &p_property_info, const Variant &p_value, const Node *p_node_context) {
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
   if (hint_string_entries.is_empty()) {
-    return {p_value};
+    return {(NodePath)p_value};
   }
 
   if (p_node_context == nullptr) {
@@ -559,7 +561,7 @@ static Variant normalize_node_path_valid_types(const PropertyInfo &p_property_in
       COLOR_YELLOW("Normalized >>> Provided 'p_node_context' is null, cannot validate '%s' property's path. Same path is returned."),
       p_property_info.name
     ));
-    return {p_value};
+    return {(NodePath)p_value};
   }
 
   const Node *target = p_node_context->get_node_or_null((NodePath)p_value);
@@ -569,7 +571,7 @@ static Variant normalize_node_path_valid_types(const PropertyInfo &p_property_in
 
   for (String &entry : hint_string_entries) {
     if (target->is_class(entry)) {
-      return {p_value};
+      return {(NodePath)p_value};
     }
   }
 
@@ -616,15 +618,17 @@ static Variant normalize_locale_id(const PropertyInfo &p_property_info, const Va
     }
   }
 
-  return {p_value};
+  return {(String)p_value};
 }
 
 /** @note Reviewed++ 
   @brief
     From a hint string containing node class names such as "Node,Node3D" ensures p_value is a Node whose class matches or inherits one of the specified types.
+    Also ensures that the Node exists, is inside the SceneTree, belongs to the same SceneTree as the context node, and is accessible from it.
 
   @returns
-    Null variant if p_value cannot be cast to a Node or if the node cannot be accessed through p_node_context.
+    Null variant if p_value cannot be cast to a Node or if the node is not inside a scene tree, if it is in a different tree than p_node_context 
+    or is not accessible through p_node_context.
   @returns
     Same value if the hint string is empty.
   @returns
@@ -638,18 +642,23 @@ static Variant normalize_node_type(const PropertyInfo &p_property_info, const Va
     return {};
   }
 
-  if (not p_node_context->has_node(node->get_path())) {
+  if (!node->is_inside_tree() || !p_node_context->is_inside_tree() || node->get_tree() != p_node_context->get_tree()) {
+    return {};
+  }
+
+  NodePath path = p_node_context->get_path_to(node);
+  if (p_node_context->get_node_or_null(path) != node) {
     return {};
   }
 
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
   if (hint_string_entries.is_empty()) {
-    return {p_value};
+    return {node};
   }
 
   for (String &entry : hint_string_entries) {
     if (node->is_class(entry)) {
-      return {p_value};
+      return {node};
     }
   }
 
@@ -670,7 +679,7 @@ static Variant normalize_node_type(const PropertyInfo &p_property_info, const Va
 static Variant normalize_input_name(const PropertyInfo &p_property_info, const Variant &p_value) {
   String input = String(p_value);
   if (input.is_empty()) {
-    return {p_value};
+    return {input};
   }
 
   const TypedArray<StringName> &actions = InputMap::get_singleton()->get_actions();
@@ -682,7 +691,7 @@ static Variant normalize_input_name(const PropertyInfo &p_property_info, const V
     }
   }
 
-  return {p_value};
+  return {input};
 }
 
 /**
@@ -1320,7 +1329,6 @@ PropertyInfo DynamicPropertyInfo::get_property_info(bool p_canonical_hint_string
       DPI_SETTER(Dictionary, properties_dict);
       DPI_GETTER(Dictionary, properties_dict);
 
-      /** @todo Try static again */
       void DynamicPropertyInfo::set_values_name_type(int p_name_type) {
         if (values_name_type == p_name_type) {
           return;
@@ -1352,9 +1360,20 @@ PropertyInfo DynamicPropertyInfo::get_property_info(bool p_canonical_hint_string
 
 #pragma region DPInfoInspectorPlugin
 
-void DynamicPropertyInfoInspectorPlugin::_on_submit() {
-  if (root_dpi.is_valid() && root_dpi->is_root) {
-    root_dpi->emit_changed();
+void DynamicPropertyInfoInspectorPlugin::normalize_property(StringName p_property_name, Object *p_object, const Ref<DynamicPropertyInfo> &p_dpi) {
+  if (p_object == nullptr || p_dpi.is_null()) {
+    return;
+  }
+
+  Variant value = p_object->get(p_property_name);
+  Variant normalized = normalize_value(
+    p_dpi->get_property_info(true, false),
+    value,
+    Object::cast_to<Node>(p_object)
+  );
+
+  if (normalized != value) {
+    p_object->set(p_property_name, normalized);
   }
 }
 
@@ -1383,10 +1402,24 @@ void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object
   p_object->notify_property_list_changed();
 }
 
+void DynamicPropertyInfoInspectorPlugin::on_submit() {
+  if (root_dpi.is_valid() && root_dpi->is_root) {
+    root_dpi->emit_changed();
+  }
+}
+
+void DynamicPropertyInfoInspectorPlugin::on_property_changed(StringName p_property_name, Variant p_value, StringName p_field, bool p_changing, Object *p_object, const Ref<DynamicPropertyInfo> &p_dpi) {
+  if (p_object == nullptr) {
+    return;
+  }
+
+  callable_mp(this, &DynamicPropertyInfoInspectorPlugin::normalize_property).bind(p_property_name, p_object, p_dpi).call_deferred();
+}
+
 bool DynamicPropertyInfoInspectorPlugin::_can_handle(Object *p_object) const {
   bool can_handle = false;
   bool due_to_guard = false;
-  
+
   if (p_object == nullptr) {
     goto RET;
   }
@@ -1412,16 +1445,23 @@ void DynamicPropertyInfoInspectorPlugin::_parse_begin(Object *p_object) {
     return;
   }
 
-  debug_print_rich(vformat("PARSE BEGIN >>> %s", p_object), true);
-
   current_d_properties.clear();
 
   root_dpi.unref();
   root_dpi_name = StringName{};
 
+  /** 
+  @note 
+    There's only one root_dpi in the whole plugin since apparently 'can_handle()' only searches through the current inspected node and it's objects.
+    The idea behind DynamicPropertyInfo and it's plugin is to only have one DPI as the scene tree node's property, so this idea matches only having
+    one root_dpi space. If for some reason this becomes a problem, having a Dictonary that links each compatible scene tree node with its root_dpi
+    should fix the problem.
+  */
   if (not find_root_dpi(p_object, &root_dpi, &root_dpi_name)) {
     return;
   }
+
+  debug_print_rich(vformat("Parse begin >>> %s - %s", p_object, root_dpi), true);
 
   if (root_dpi.is_null()) {
     root_dpi.instantiate();
@@ -1498,7 +1538,6 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
   Ref<DynamicPropertyInfo> target_dpi {root_dpi};
   if (p_name != root_dpi->property_select) {
     target_dpi = root_dpi->properties_dict.get(p_name, nullptr);
-
     if (target_dpi.is_null()) {
       target_dpi = Ref<DynamicPropertyInfo>(memnew(DynamicPropertyInfo({Variant::NIL, p_name})));
     }
@@ -1508,7 +1547,8 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
     Apply a normalzation for types that hold values that might not be valid anymore and are not necesarilly selected i.e. NodePath pointing to a no longer existent node.
   */
   PropertyInfo target_pi = target_dpi->get_property_info(true);
-  p_object->set(p_name, normalize_value(target_pi, p_object->get(p_name), Object::cast_to<Node>(p_object)));
+  normalize_property(p_name, p_object, target_dpi);
+  // p_object->set(p_name, normalize_value(target_pi, p_object->get(p_name), Object::cast_to<Node>(p_object)));
   
   /**
     Internally, when instantiating a property editor Godot checks every plugin's can handle, if true parses property again.
@@ -1529,6 +1569,10 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(Object *p_object, Varia
     );
 
     editor->set_object_and_property(p_object, p_name);
+    editor->connect(
+      SIGNAL(editor, property_changed), 
+      callable_mp(this, &DynamicPropertyInfoInspectorPlugin::on_property_changed).bind(p_object, target_dpi)
+    );
     this->add_property_editor(p_name, editor);
   creating_native_editor() = false;
 
@@ -1582,7 +1626,7 @@ void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
 
     Button *submit_button = memnew(Button);
     submit_button->set_text("Apply");
-    submit_button->connect("pressed", callable_mp(this, &DynamicPropertyInfoInspectorPlugin::_on_submit));
+    submit_button->connect("pressed", callable_mp(this, &DynamicPropertyInfoInspectorPlugin::on_submit));
     button_target_node->add_child(submit_button);
   }
 
