@@ -7,6 +7,10 @@ extends Control
 @export var dpi : DynamicPropertyInfo
 #@export var property_info2 : DynamicPropertyInfo
 @export var foo : Resource
+@export var foo1 : Resource
+@export var foo2 : Resource
+
+# saihfaisfdsssfs
 
 func _ready() -> void:
 	Debug.set_verbose(false)

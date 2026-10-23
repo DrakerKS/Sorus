@@ -639,10 +639,17 @@ static Variant normalize_locale_id(const PropertyInfo &p_property_info, const Va
 */
 static Variant normalize_node_type(const PropertyInfo &p_property_info, const Variant &p_value, const Node* p_node_context) {
   Node *node = Object::cast_to<Node>((Object*) p_value);
+
+  print_line(" >>> ", node);
+  print_line(" >>> ", p_node_context);
   if (p_node_context == nullptr || node == nullptr) {
     return {};
   }
 
+  print_line(" >>> ", node->is_inside_tree());
+  print_line(" >>> ", p_node_context->is_inside_tree());
+  // print_line(" >>> ", node->get_tree());
+  // print_line(" >>> ", p_node_context->get_tree());
   if (!node->is_inside_tree() || !p_node_context->is_inside_tree() || node->get_tree() != p_node_context->get_tree()) {
     return {};
   }
@@ -1406,8 +1413,8 @@ void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object
     if (root_dpi->type != previous->type) {
       Variant new_value = normalize_value(root_pi);
       p_object->set(root_pi.name, new_value);
-    } else if (root_dpi->hint != previous->hint || root_dpi->hint_string != previous->hint_string) {
-      Variant new_value = normalize_value(root_pi, p_object->get(root_pi.name), Object::cast_to<Node>(p_object));
+    } else if (root_dpi->hint != previous->hint || root_dpi->hint_string != previous->hint_string) { /** @todo This might be unnecessary since parse_property already normalizes */
+      Variant new_value = normalize_value(root_pi, p_object->get(root_pi.name), Object::cast_to<Node>(p_object)); /** @todo doesn't work with resources */
       p_object->set(root_pi.name, new_value);
     }
   }
@@ -1453,18 +1460,13 @@ bool DynamicPropertyInfoInspectorPlugin::_can_handle(Object *p_object) const {
     goto RET;
   }
 
-  if (ObjectID id {p_object->get_instance_id()}; object_parse_context_map.has(id)) {
-    ObjectParseContext context = object_parse_context_map[id];
-    can_handle = find_root_dpi(p_object, &context.root_dpi, &context.root_dpi_name);
-  } else {
-    can_handle = find_root_dpi(p_object);
-  }
+  can_handle = find_root_dpi(p_object);
 
   RET:
     debug_print_rich(vformat(
       "Can handle >>> %s: %s%s", 
       p_object, can_handle, (due_to_guard ? " due to loop guard while instantiating property editor" : "")), 
-      true
+      false
     );
     return can_handle;
 }
@@ -1474,28 +1476,18 @@ void DynamicPropertyInfoInspectorPlugin::_parse_begin(Object *p_object) {
     return;
   }
 
-  ObjectID id {p_object->get_instance_id()};
-  if (not object_parse_context_map.has(id)) {
-    object_parse_context_map[id] = ObjectParseContext{};
+  parse_first_responder = (parse_first_responder == nullptr)? p_object : parse_first_responder;
+  if (p_object == parse_first_responder) {
+    object_parse_context_map.clear();
   }
+
+  ObjectID id {p_object->get_instance_id()};
+  object_parse_context_map[id] = ObjectParseContext{};
+
 
   ObjectParseContext &context = object_parse_context_map[id];
   Ref<DynamicPropertyInfo> &root_dpi = context.root_dpi;
   StringName &root_dpi_name = context.root_dpi_name;
-
-  /** Clear these since these are determined later during parse_property() and parse_end() respectively */
-  context.current_parsed_properties.clear();
-  context.editor_property = nullptr;
-
-  if (not map_cleared) {
-    for (auto &entry : object_parse_context_map) {
-      if (ObjectDB::get_instance(entry.key) == nullptr) {
-        object_parse_context_map.erase(entry.key);
-      }
-    }
-
-    map_cleared = true; /** Set to false at 'parse_end()' */
-  }
 
   if (not find_root_dpi(p_object, &root_dpi, &root_dpi_name)) {
     object_parse_context_map.erase(id);
@@ -1507,7 +1499,7 @@ void DynamicPropertyInfoInspectorPlugin::_parse_begin(Object *p_object) {
     p_object->set(root_dpi_name, root_dpi);
   }
 
-  debug_print_rich(vformat("Parse begin >>> %s - %s", p_object, root_dpi), true);
+  debug_print_rich(vformat("Parse begin >>> %s - %s", p_object, root_dpi), false);
 
   Callable bound_callable = callable_mp_static(&DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed).bind(p_object, root_dpi);
   if (not root_dpi->is_connected(SIGNAL(root_dpi, changed), bound_callable)) {
@@ -1633,27 +1625,29 @@ void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
   }
   EditorProperty *root_dpi_inspector_node = context.editor_property;
 
-  HBoxContainer *button_target_node = nullptr;
-  TypedArray<Node> children = root_dpi_inspector_node->get_children();
+  if (root_dpi_inspector_node != nullptr) {
+    HBoxContainer *button_target_node = nullptr;
+    TypedArray<Node> children = root_dpi_inspector_node->get_children();
 
-  if (children.size() > 1) {
-    /** WEAK: This line depends entirely on the correct HBoxContainer being on index 1 of root_dpi_inspector_node's children array, as of Godot 4.7.2 that seems to always be the case */
-    Node *likely_target_node = Object::cast_to<Node>((Object*)children[1]);
+    if (children.size() > 1) {
+      /** WEAK: This line depends entirely on the correct HBoxContainer being on index 1 of root_dpi_inspector_node's children array, as of Godot 4.7.2 that seems to always be the case */
+      Node *likely_target_node = Object::cast_to<Node>((Object*)children[1]);
 
-    if (likely_target_node != nullptr) {
-      button_target_node = Object::cast_to<HBoxContainer>(likely_target_node);
+      if (likely_target_node != nullptr) {
+        button_target_node = Object::cast_to<HBoxContainer>(likely_target_node);
+      }
     }
-  }
-  
-  if (button_target_node == nullptr) {
-    button_target_node = memnew(HBoxContainer);
-    root_dpi_inspector_node->add_child(button_target_node);
-  }
+    
+    if (button_target_node == nullptr) {
+      button_target_node = memnew(HBoxContainer);
+      root_dpi_inspector_node->add_child(button_target_node);
+    }
 
-  Button *submit_button = memnew(Button);
-  submit_button->set_text("Apply");
-  submit_button->connect("pressed", callable_mp(this, &DynamicPropertyInfoInspectorPlugin::on_submit).bind(root_dpi));
-  button_target_node->add_child(submit_button);
+    Button *submit_button = memnew(Button);
+    submit_button->set_text("Apply");
+    submit_button->connect("pressed", callable_mp(this, &DynamicPropertyInfoInspectorPlugin::on_submit).bind(root_dpi));
+    button_target_node->add_child(submit_button);
+  }
 
   /** Clear properties no longer available from root dpi */
   bool req_refresh = false;
@@ -1676,11 +1670,13 @@ void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
       req_refresh = true;
     }
   }
+  
+  if (p_object == parse_first_responder) {
+    parse_first_responder = nullptr;
+  }
 
-  map_cleared = false;
-
-  for (auto &entry : object_parse_context_map) {
-    print_line(ObjectDB::get_instance(entry.key));
+  for (const auto &x : object_parse_context_map) {
+    print_line(ObjectDB::get_instance(x.key));
   }
 
   if (req_refresh) {

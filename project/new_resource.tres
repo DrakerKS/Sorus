@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="Foo" format=3 uid="uid://d0th8pl6sqi1h"]
+
+[ext_resource type="Script" uid="uid://rsjc4ouwkspx" path="res://foo.gd" id="1_g5ko2"]
+
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_1ivwu"]
+property_select = &"d_foo1"
+
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_uauhc"]
+property_select = &"d_foo2"
+
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_3gp3i"]
+properties_dict = {
+"d_foo1": SubResource("DynamicPropertyInfo_1ivwu"),
+"d_foo2": SubResource("DynamicPropertyInfo_uauhc")
+}
+values_name_type = 2
+
+[resource]
+script = ExtResource("1_g5ko2")
+d_foo1 = null
+d_foo2 = null
+dpi = SubResource("DynamicPropertyInfo_3gp3i")

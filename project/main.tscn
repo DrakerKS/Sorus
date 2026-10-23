@@ -5,6 +5,13 @@
 [ext_resource type="PackedScene" uid="uid://ddvam0a3irj5l" path="res://game/entities/player/player.tscn" id="1_ig7tw"]
 [ext_resource type="Script" uid="uid://0oy3f2y0ay0p" path="res://game/entities/player/player.gd" id="2_0xm2m"]
 [ext_resource type="Script" uid="uid://f4cneejgqtgd" path="res://core/settings/settings_menu.gd" id="5_lquwl"]
+[ext_resource type="Script" uid="uid://rsjc4ouwkspx" path="res://foo.gd" id="6_7mycd"]
+
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_lquwl"]
+property_select = &"d_foo"
+type = 2
+hint = 2
+hint_string = "a,b,c,d"
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_0xm2m"]
 size = Vector3(31, 1, 11)
@@ -21,24 +28,52 @@ albedo_color = Color(0.767447, 1, 0.667761, 1)
 [sub_resource type="BoxMesh" id="BoxMesh_lquwl"]
 material = SubResource("StandardMaterial3D_1bvp3")
 
-[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_lquwl"]
-property_select = &"d_value2"
-type = 28
-hint = 23
-hint_string = "Array:int:"
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_7mycd"]
+property_select = &"d_value1"
+type = 2
+hint = 2
+hint_string = "a,b,c,d"
 
 [sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_272bh"]
-property_select = &"d_value2"
-type = 28
-hint = 23
-hint_string = "Array:int:"
+property_select = &"d_value3"
+
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_5vw27"]
+property_select = &"d_value3"
 properties_dict = {
-"d_value2": SubResource("DynamicPropertyInfo_lquwl")
+"d_value1": SubResource("DynamicPropertyInfo_7mycd"),
+"d_value3": SubResource("DynamicPropertyInfo_272bh")
 }
 values_name_type = 2
 
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_kek77"]
+property_select = &"d_foo1"
+type = 24
+hint = 34
+
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_4c57u"]
+property_select = &"d_foo2"
+
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_efxa6"]
+property_select = &"d_foo1"
+type = 24
+hint = 34
+properties_dict = {
+"d_foo1": SubResource("DynamicPropertyInfo_kek77"),
+"d_foo2": SubResource("DynamicPropertyInfo_4c57u")
+}
+values_name_type = 2
+
+[sub_resource type="Resource" id="Resource_5vw27"]
+script = ExtResource("6_7mycd")
+d_foo1 = null
+d_foo2 = null
+dpi = SubResource("DynamicPropertyInfo_efxa6")
+metadata/_custom_type_script = "uid://rsjc4ouwkspx"
+
 [node name="Node3D" type="Node3D" unique_id=662699248]
 script = ExtResource("1_1bvp3")
+d_foo = 0
+dpi = SubResource("DynamicPropertyInfo_lquwl")
 
 [node name="World" type="Node3D" parent="." unique_id=1506964186]
 
@@ -83,8 +118,10 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("5_lquwl")
-d_value2 = [[0]]
-d_property_info = SubResource("DynamicPropertyInfo_272bh")
+d_value1 = 1
+dpi = SubResource("DynamicPropertyInfo_5vw27")
+foo = SubResource("Resource_5vw27")
+metadata/_edit_use_anchors_ = true
 
 [node name="PanelContainer" type="PanelContainer" parent="CanvasLayer/SettingsMenu" unique_id=281114992]
 layout_mode = 0
@@ -165,8 +202,3 @@ text = "Aplicar"
 [node name="RestoreButton" type="Button" parent="CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/game_settings" unique_id=1291527035]
 layout_mode = 2
 text = "Restaurar"
-
-[node name="Control" type="Control" parent="CanvasLayer/SettingsMenu" unique_id=960874799]
-anchors_preset = 0
-offset_right = 40.0
-offset_bottom = 40.0

@@ -90,14 +90,24 @@ namespace godot {
         EditorProperty *editor_property {};
       };
 
-      HashMap<ObjectID, ObjectParseContext> object_parse_context_map {};
-      bool map_cleared = false;
-
       /** 
-        @todo 
-          Remove those entries whose 'ObjectDB::get_instance(id)' returns nullptr.
-          Maybe onece each parse, or some other mechanism.
+        @note
+          This map is cleared once every parse chain begin, meaning that it is
+          required to check if the map has certain entry before trying to use it.
+          This also means it is only guaranteed that every inner object has been 
+          parsed until parse_first_responder's parse_end() execution. Any other
+          access or modification to the map before this should only be directed
+          towards the currently parsed object and no other else.
       */
+      HashMap<ObjectID, ObjectParseContext> object_parse_context_map {};
+      /** 
+        @note
+          First object that handles the parsing is considered as 'parse_first_responder' 
+          during the first 'parse_begin()' and then is cleaned at 'parse_end()'. Any 
+          code that should be or may be better to execute just once is better inside a
+          conditional block 'p_object == parse_first_responder'
+      */
+      Object *parse_first_responder = nullptr;
 
       static bool &creating_native_editor() {
         static thread_local bool value = false;
