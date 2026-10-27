@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3 uid="uid://ddvam0a3irj5l"]
+[gd_scene format=3 uid="uid://ddvam0a3irj5l"]
 
 [ext_resource type="PackedScene" uid="uid://b3hjmk2hptjxj" path="res://game/entities/player/character_base.tscn" id="1_mv1ah"]
 
@@ -26,10 +26,10 @@ func set_model(scene: PackedScene) -> void:
 	$AnimationTree.anim_player = source_anim_player.get_path()
 "
 
-[node name="Player" type="CharacterBody3D"]
+[node name="Player" type="CharacterBody3D" unique_id=1747339110]
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=507460506]
 shape = SubResource("CylinderShape3D_onrkg")
 
-[node name="CharacterBase" parent="." instance=ExtResource("1_mv1ah")]
+[node name="CharacterBase" parent="." unique_id=454084295 instance=ExtResource("1_mv1ah")]
 script = SubResource("GDScript_mv1ah")

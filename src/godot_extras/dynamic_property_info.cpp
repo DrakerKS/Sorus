@@ -26,7 +26,7 @@ using namespace godot;
 
 #pragma region HelperFunctions
 
-static Variant normalize_value(const PropertyInfo &p_property_info, const Variant &p_value = nullptr, const Node * p_node_context = nullptr, bool p_type_strict = false);
+static Variant normalize_value(const PropertyInfo &p_property_info, const Variant &p_value = nullptr, const Node *p_node_context = nullptr, bool p_type_strict = false);
 static String normalize_hint_string(const PropertyInfo &p_property_info, bool p_verbose = true);
 
 /** @note Reviewed */
@@ -196,6 +196,7 @@ static Variant normalize_range(const PropertyInfo &p_property_info, const Varian
     return {};
   }
 
+  /** @todo Maybe do something to take into account the step, since a value of 5.5 in a Float/Range:0,10,1 should not be possible */
   #define NORMALIZE_TYPE(m_type) do { \
     if (not hint_string_entries[0].JOIN(is_valid,m_type)() || not hint_string_entries[1].JOIN(is_valid,m_type)()) { \
       return {}; \
@@ -205,9 +206,11 @@ static Variant normalize_range(const PropertyInfo &p_property_info, const Varian
     } \
     m_type min = (hint_string_entries.has("or_less"))? (m_type)p_value : hint_string_entries[0].JOIN(to,m_type)(); \
     m_type max = (hint_string_entries.has("or_greater"))? (m_type)p_value : hint_string_entries[1].JOIN(to,m_type)(); \
-    return CLAMP((m_type)p_value, min, max); \
-   } while(false)
+    m_type clamped = CLAMP((m_type)p_value, min, max); \
+    return clamped; \
+   } while(false) 
 
+  /** @todo Check weird floating point cases */
   if (type == Variant::INT) {
     NORMALIZE_TYPE(int);
   } else {
@@ -538,11 +541,11 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
     From a hint string containing node class names such as "Node2D,Sprite2D" ensures p_value points to an existing Node whose class matches one of the specified types.
 
   @returns
-    Same value if the hint string is empty.
-  @returns
-    Same value if p_object cannot be cast to a Node, since the property's path cannot be validated.
+    Same value if no node context is provided, i.e: p_value is a Resource's property, therefore, lacks context to validate such value.
   @returns
     Null variant if the NodePath does not point to an existing Node.
+  @returns
+    Same value if the hint string is empty.
   @returns
     Same value if the target Node matches one of the hint string node types.
   @returns
@@ -553,21 +556,17 @@ static Variant normalize_type_string(const PropertyInfo &p_property_info, const 
 */
 static Variant normalize_node_path_valid_types(const PropertyInfo &p_property_info, const Variant &p_value, const Node *p_node_context) {
   PackedStringArray hint_string_entries = p_property_info.hint_string.split(",", false);
-  if (hint_string_entries.is_empty()) {
-    return {(NodePath)p_value};
-  }
-
   if (p_node_context == nullptr) {
-    debug_print_rich(vformat(
-      COLOR_YELLOW("Normalized >>> Provided 'p_node_context' is null, cannot validate '%s' property's path. Same path is returned."),
-      p_property_info.name
-    ));
     return {(NodePath)p_value};
   }
 
   const Node *target = p_node_context->get_node_or_null((NodePath)p_value);
   if (target == nullptr) {
     return {};
+  }
+
+  if (hint_string_entries.is_empty()) {
+    return {(NodePath)p_value};
   }
 
   for (String &entry : hint_string_entries) {
@@ -639,18 +638,15 @@ static Variant normalize_locale_id(const PropertyInfo &p_property_info, const Va
 */
 static Variant normalize_node_type(const PropertyInfo &p_property_info, const Variant &p_value, const Node* p_node_context) {
   Node *node = Object::cast_to<Node>((Object*) p_value);
-
-  print_line(" >>> ", node);
-  print_line(" >>> ", p_node_context);
-  if (p_node_context == nullptr || node == nullptr) {
+  if (node == nullptr) {
     return {};
   }
 
-  print_line(" >>> ", node->is_inside_tree());
-  print_line(" >>> ", p_node_context->is_inside_tree());
-  // print_line(" >>> ", node->get_tree());
-  // print_line(" >>> ", p_node_context->get_tree());
-  if (!node->is_inside_tree() || !p_node_context->is_inside_tree() || node->get_tree() != p_node_context->get_tree()) {
+  if (p_node_context == nullptr) {
+    return {};
+  }
+
+  if (not node->is_inside_tree() || not p_node_context->is_inside_tree() || node->get_tree() != p_node_context->get_tree()) {
     return {};
   }
 
@@ -1054,7 +1050,7 @@ static Variant normalize_value(const PropertyInfo &p_property_info,  const Varia
 
 #pragma region DynamicPropertyInfo
 
-static String get_variant_type_hint_string(ValueNameType p_name_type) {
+String DynamicPropertyInfo::get_variant_type_hint_string(ValueNameType p_name_type) {
   String hint_string {};
 
   for (const auto &entry : variant_type_names_map().get_entries()) {
@@ -1070,10 +1066,14 @@ static String get_variant_type_hint_string(ValueNameType p_name_type) {
   return hint_string;
 }
 
-static String get_property_hint_hint_string(ValueNameType p_name_type) {
+String DynamicPropertyInfo::get_property_hint_hint_string(ValueNameType p_name_type, bool p_is_owner_a_resource) {
   String hint_string {};
   
   for (const auto &entry : property_hint_names_map().get_entries()) {
+    if (p_is_owner_a_resource && entry.first == PROPERTY_HINT_NODE_TYPE) {
+      continue;
+    }
+
     if (not hint_string.is_empty()) {
       hint_string += ",";
     }
@@ -1086,7 +1086,7 @@ static String get_property_hint_hint_string(ValueNameType p_name_type) {
   return hint_string;
 }
 
-static String get_property_usage_flags_hint_string(ValueNameType p_name_type) {
+String DynamicPropertyInfo::get_property_usage_flags_hint_string(ValueNameType p_name_type) {
   String hint_string {};
 
   for (const auto &entry : property_usage_names_map().get_entries()) {
@@ -1106,7 +1106,7 @@ static String get_property_usage_flags_hint_string(ValueNameType p_name_type) {
   return hint_string;
 }
 
-static const String& get_values_name_type_hint_string() {
+const String& DynamicPropertyInfo::get_values_name_type_hint_string() {
   static String hint_string {};
 
   if (not hint_string.is_empty()) {
@@ -1124,10 +1124,25 @@ static const String& get_values_name_type_hint_string() {
   return hint_string;
 }
 
+String DynamicPropertyInfo::get_property_names_hint_string() const {
+  Array keys = properties_dict.keys();
+  String out {};
+
+  for (int i = 0; i < keys.size(); i++) {
+    if (not out.is_empty()) {
+      out += ",";
+    }
+
+    out += (StringName)keys[i];
+  }
+
+  return out;
+}
+
 void DynamicPropertyInfo::_bind_methods() {
   SORUS_BIND_PROPERTY_ENUM_STRING(property_select, PLACEHOLDER_PROPERTY_SELECT);
   SORUS_BIND_PROPERTY_ENUM(type, get_variant_type_hint_string(DEFAULT_NAME_TYPE));
-  SORUS_BIND_PROPERTY_ENUM(hint,get_property_hint_hint_string(DEFAULT_NAME_TYPE));
+  SORUS_BIND_PROPERTY_ENUM(hint,get_property_hint_hint_string(DEFAULT_NAME_TYPE, true)); /** @note Assuming a resource here prevents NodeType being available for Resources in case of any weird scenario where the property hasn't been validated */
   SORUS_BIND_PROPERTY_MULTILINE_TEXT(hint_string);
 
   ClassDB::add_property_group(DynamicPropertyInfo::get_class_static(), "Usage bitfield", "");
@@ -1156,7 +1171,7 @@ void DynamicPropertyInfo::_validate_property(PropertyInfo &p_property) const {
   if (name == StringName{member_type}) {
     p_property.hint_string = get_variant_type_hint_string((ValueNameType)values_name_type);
   } else if (name == StringName{member_hint}) {
-    p_property.hint_string = get_property_hint_hint_string((ValueNameType)values_name_type);
+    p_property.hint_string = get_property_hint_hint_string((ValueNameType)values_name_type, is_owner_a_resource);
   } else if (name == StringName{member_usage}) {
     p_property.hint_string = get_property_usage_flags_hint_string((ValueNameType)values_name_type);
   }
@@ -1189,21 +1204,6 @@ String DynamicPropertyInfo::_to_string() const {
     this->get_parent_class_static(), 
     String::num_uint64(get_instance_id())
   );
-}
-
-String DynamicPropertyInfo::get_property_names_hint_string() const {
-  Array keys = properties_dict.keys();
-  String out {};
-
-  for (int i = 0; i < keys.size(); i++) {
-    if (not out.is_empty()) {
-      out += ",";
-    }
-
-    out += (StringName)keys[i];
-  }
-
-  return out;
 }
 
 PropertyInfo DynamicPropertyInfo::get_property_info(bool p_canonical_hint_string, bool p_verbose) {
@@ -1380,43 +1380,41 @@ void DynamicPropertyInfoInspectorPlugin::find_inspector_property_editors(HashMap
   find(find, nullptr);
 }
 
-void DynamicPropertyInfoInspectorPlugin::normalize_property(Object *p_object, const Ref<DynamicPropertyInfo> &p_dpi) {
-  if (p_object == nullptr || p_dpi.is_null()) {
+void DynamicPropertyInfoInspectorPlugin::normalize_property(Object *p_object, const StringName &p_property_name) {
+  if (p_object == nullptr || p_property_name.is_empty()) {
     return;
   }
 
-  Variant value = p_object->get(p_dpi->get_property_select());
-  Variant normalized = normalize_value(
-    p_dpi->get_property_info(true, false),
-    value,
-    Object::cast_to<Node>(p_object)
-  );
+  Ref<DynamicPropertyInfo> root_dpi = nullptr;
+  if (ObjectID id{p_object->get_instance_id()}; object_parse_context_map.has(id)) {
+    root_dpi = object_parse_context_map.get(id).root_dpi;
+  }
 
+  Ref<DynamicPropertyInfo> target_dpi {root_dpi}; /** Assuming 'p_name' is currently selected */
+  Ref<DynamicPropertyInfo> previous = root_dpi->properties_dict.get(p_property_name, nullptr);
+  if (root_dpi->property_select != p_property_name) {
+    if (previous.is_null()) {
+      previous = Ref<DynamicPropertyInfo>(memnew(DynamicPropertyInfo({Variant::NIL, p_property_name})));
+    }
+    target_dpi = previous;
+  }
+  
+  Variant normalized, value = p_object->get(p_property_name);
+  if (target_dpi != previous && target_dpi->type != previous->type) {
+    normalized = normalize_value(root_dpi->get_property_info(true, true));
+  } else {
+    normalized = normalize_value(target_dpi->get_property_info(true, false), value, Object::cast_to<Node>(p_object));
+  }
+
+  print_line("Normalized >>> ", normalized);
   if (normalized != value) {
-    p_object->set(p_dpi->get_property_select(), normalized);
+    p_object->set(p_property_name, normalized);
   }
 }
 
 void DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed(Object *p_object, const Ref<DynamicPropertyInfo> &root_dpi) {
   if (p_object == nullptr) {
     return;
-  }
-
-  if (root_dpi.is_valid()) {
-    Ref<DynamicPropertyInfo> previous = root_dpi->properties_dict.get(root_dpi->property_select, nullptr);
-    if (previous.is_null()) {
-      return;
-    }
-
-    PropertyInfo root_pi = root_dpi->get_property_info(true, true);
-
-    if (root_dpi->type != previous->type) {
-      Variant new_value = normalize_value(root_pi);
-      p_object->set(root_pi.name, new_value);
-    } else if (root_dpi->hint != previous->hint || root_dpi->hint_string != previous->hint_string) { /** @todo This might be unnecessary since parse_property already normalizes */
-      Variant new_value = normalize_value(root_pi, p_object->get(root_pi.name), Object::cast_to<Node>(p_object)); /** @todo doesn't work with resources */
-      p_object->set(root_pi.name, new_value);
-    }
   }
 
   p_object->notify_property_list_changed();
@@ -1428,19 +1426,12 @@ void DynamicPropertyInfoInspectorPlugin::on_submit(const Ref<DynamicPropertyInfo
   }
 }
 
-void DynamicPropertyInfoInspectorPlugin::on_property_changed(
-  StringName p_property_name, 
-  Variant p_value, 
-  StringName p_field, 
-  bool p_changing, 
-  Object *p_object, 
-  const Ref<DynamicPropertyInfo> &p_dpi
-) {
-  if (p_object == nullptr || p_dpi.is_null()) {
+void DynamicPropertyInfoInspectorPlugin::on_property_changed(StringName p_property_name, Variant p_value, StringName p_field, bool p_changing, Object *p_object) {
+  if (p_object == nullptr || p_property_name.is_empty()) {
     return;
   }
 
-  callable_mp(this, &DynamicPropertyInfoInspectorPlugin::normalize_property).bind(p_object, p_dpi).call_deferred();
+  callable_mp(this, &DynamicPropertyInfoInspectorPlugin::normalize_property).bind(p_object, p_property_name).call_deferred();
 }
 
 bool DynamicPropertyInfoInspectorPlugin::_can_handle(Object *p_object) const {
@@ -1466,7 +1457,7 @@ bool DynamicPropertyInfoInspectorPlugin::_can_handle(Object *p_object) const {
     debug_print_rich(vformat(
       "Can handle >>> %s: %s%s", 
       p_object, can_handle, (due_to_guard ? " due to loop guard while instantiating property editor" : "")), 
-      false
+      true
     );
     return can_handle;
 }
@@ -1499,7 +1490,11 @@ void DynamicPropertyInfoInspectorPlugin::_parse_begin(Object *p_object) {
     p_object->set(root_dpi_name, root_dpi);
   }
 
-  debug_print_rich(vformat("Parse begin >>> %s - %s", p_object, root_dpi), false);
+  if (p_object->is_class(Resource::get_class_static())) {
+    root_dpi->is_owner_a_resource = true;
+  }
+
+  debug_print_rich(vformat("Parse begin >>> %s - %s", p_object, root_dpi), true);
 
   Callable bound_callable = callable_mp_static(&DynamicPropertyInfoInspectorPlugin::on_dynamic_property_info_changed).bind(p_object, root_dpi);
   if (not root_dpi->is_connected(SIGNAL(root_dpi, changed), bound_callable)) {
@@ -1535,7 +1530,8 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(
     for each object by linking every handleable object's id with their respective parsing context, including root_dpi, root_dpi property name
     and the names of the currently parsed properties.
   */
-  ObjectID id {p_object->get_instance_id()}; if (not object_parse_context_map.has(id)) return false;
+  ObjectID id {p_object->get_instance_id()}; 
+  if (not object_parse_context_map.has(id)) return false;
   ObjectParseContext &context = object_parse_context_map[id];
   Ref<DynamicPropertyInfo> &root_dpi = context.root_dpi;
   context.current_parsed_properties.insert(p_name);
@@ -1557,8 +1553,8 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(
     Apply a normalzation for types that hold values that might not be valid anymore and are not necesarilly selected:
       I.e. NodePath pointing to a no longer existent node.
   */
-  normalize_property(p_object, target_dpi);
-  
+  normalize_property(p_object, p_name);
+
   /** Instantiate the EditorProperty for this property with loop guard. 
 
     Internally, when instantiating a property editor Godot checks every plugin's can handle, if true parses property again.
@@ -1588,7 +1584,7 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(
       */
       editor->connect(
         SIGNAL(editor, property_changed), 
-        callable_mp(this, &DynamicPropertyInfoInspectorPlugin::on_property_changed).bind(p_object, target_dpi)
+        callable_mp(this, &DynamicPropertyInfoInspectorPlugin::on_property_changed).bind(p_object)
       );
     }
     this->add_property_editor(p_name, editor);
@@ -1611,6 +1607,10 @@ bool DynamicPropertyInfoInspectorPlugin::_parse_property(
 void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
   if (p_object == nullptr) {
     return;
+  }
+
+  if (p_object == parse_first_responder) {
+    parse_first_responder = nullptr;
   }
 
   ObjectID id {p_object->get_instance_id()}; if (not object_parse_context_map.has(id)) return;
@@ -1669,14 +1669,6 @@ void DynamicPropertyInfoInspectorPlugin::_parse_end(Object *p_object) {
       }
       req_refresh = true;
     }
-  }
-  
-  if (p_object == parse_first_responder) {
-    parse_first_responder = nullptr;
-  }
-
-  for (const auto &x : object_parse_context_map) {
-    print_line(ObjectDB::get_instance(x.key));
   }
 
   if (req_refresh) {

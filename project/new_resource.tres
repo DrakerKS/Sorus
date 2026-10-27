@@ -2,21 +2,23 @@
 
 [ext_resource type="Script" uid="uid://rsjc4ouwkspx" path="res://foo.gd" id="1_g5ko2"]
 
-[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_1ivwu"]
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_g5ko2"]
 property_select = &"d_foo1"
 
-[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_uauhc"]
+[sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_1ivwu"]
 property_select = &"d_foo2"
+type = 22
 
 [sub_resource type="DynamicPropertyInfo" id="DynamicPropertyInfo_3gp3i"]
+property_select = &"d_foo1"
 properties_dict = {
-"d_foo1": SubResource("DynamicPropertyInfo_1ivwu"),
-"d_foo2": SubResource("DynamicPropertyInfo_uauhc")
+"d_foo1": SubResource("DynamicPropertyInfo_g5ko2"),
+"d_foo2": SubResource("DynamicPropertyInfo_1ivwu")
 }
 values_name_type = 2
 
 [resource]
 script = ExtResource("1_g5ko2")
 d_foo1 = null
-d_foo2 = null
+d_foo2 = NodePath("CanvasLayer/SettingsMenu/PanelContainer/MarginContainer/accessibility_settings/color_blindness")
 dpi = SubResource("DynamicPropertyInfo_3gp3i")

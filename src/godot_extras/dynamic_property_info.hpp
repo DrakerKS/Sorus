@@ -41,7 +41,14 @@ namespace godot {
       
       SORUS_DECL(int, values_name_type, DEFAULT_NAME_TYPE);
 
+      static String get_variant_type_hint_string(ValueNameType p_name_type);
+      static String get_property_hint_hint_string(ValueNameType p_name_type, bool p_is_resource);
+      static String get_property_usage_flags_hint_string(ValueNameType p_name_type);
+      static const String& get_values_name_type_hint_string();
       String get_property_names_hint_string () const;
+
+      bool is_root = false;
+      bool is_owner_a_resource = false;
 
     protected:
       static void _bind_methods();
@@ -52,8 +59,6 @@ namespace godot {
       static constexpr const ValueNameType DEFAULT_NAME_TYPE = VALUE_NAME_PASCAL;
       static constexpr const char *MEMBER_PROPERTY_INFO = "property_info"; /** @deprecated property_info is no longer a property, use get_property_info instead */
       static constexpr const char * PLACEHOLDER_PROPERTY_SELECT = "Select";
-
-      bool is_root = false;
 
       PropertyInfo get_property_info(bool p_canonical_hint_string, bool p_verbose = false);
 
@@ -125,8 +130,8 @@ namespace godot {
       );
 
       void normalize_property(
-        Object *p_object,
-        const Ref<DynamicPropertyInfo> &p_dpi
+        Object *p_object, 
+        const StringName &p_property_name
       );
 
       static void on_dynamic_property_info_changed(
@@ -143,8 +148,7 @@ namespace godot {
         Variant p_value, 
         StringName p_field, 
         bool changing, 
-        Object *p_object,
-        const Ref<DynamicPropertyInfo> &p_dpi
+        Object *p_object
       );
 
     public:
